@@ -147,13 +147,29 @@ ul.dex{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap
 @media (max-width:420px){.tabs:not(.small) button{font-size:13px;padding:9px 2px;line-height:1.2}}
 /* home showcase fan */
 .showcase{display:flex;flex-direction:column;align-items:center;gap:6px;margin-top:6px}
-.fan{display:flex;justify-content:center;align-items:flex-start;padding:14px 0 10px;width:100%;overflow:hidden}
+.slides{display:flex;width:100%;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;overscroll-behavior-x:contain}
+.slides::-webkit-scrollbar{display:none}
+.slide{flex:0 0 100%;scroll-snap-align:center;scroll-snap-stop:always;display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0}
+.dots{display:flex;gap:8px;justify-content:center}
+.dot{width:8px;height:8px;border-radius:999px;border:0;padding:0;background:var(--line);cursor:pointer;position:relative;transition:width .2s ease,background .2s ease}
+.dot::after{content:"";position:absolute;inset:-10px -4px}
+.dot[aria-current="true"]{width:22px;background:var(--fg)}
+.fan{display:flex;justify-content:center;align-items:flex-start;padding:14px 0 10px;width:100%;overflow:hidden;height:calc(min(26vw,128px) * 88/63 + 64px);box-sizing:border-box}
+.spot{position:relative;display:flex;justify-content:center;align-items:center;width:100%;padding:10px 0;height:calc(min(26vw,128px) * 88/63 + 64px);box-sizing:border-box}
+.spot .fan-card{--r:0deg;--y:0px}
+.spot .main{width:min(32vw,150px);z-index:3;margin:0}
+.spot .side{position:absolute;top:50%;width:min(24vw,112px);z-index:1;margin:0;opacity:.85;filter:saturate(.9)}
+.spot .left{right:calc(50% + min(8vw,38px));--r:-10deg;--y:-50%}
+.spot .right{left:calc(50% + min(8vw,38px));--r:10deg;--y:-50%}
+.spot .side:hover,.spot .side:focus-visible{transform:translateY(calc(-50% - 8px)) rotate(var(--r))}
+.cascade{display:flex;justify-content:center;align-items:flex-start;width:100%;padding:12px 0 10px;overflow:hidden;height:calc(min(26vw,128px) * 88/63 + 64px);box-sizing:border-box}
+.cascade .fan-card{width:min(22vw,108px);margin:0 calc(min(22vw,108px) * -0.3);--r:0deg}
 .fan-card{flex:0 0 auto;width:min(26vw,128px);aspect-ratio:63/88;margin:0 calc(min(26vw,128px) * -0.22);padding:0;border:0;background:var(--sunk);border-radius:6%;overflow:hidden;cursor:zoom-in;
   transform:translateY(var(--y)) rotate(var(--r));transform-origin:50% 120%;box-shadow:0 6px 18px rgba(0,0,0,.35);transition:transform .25s ease}
 .fan-card img{width:100%;height:100%;object-fit:cover;display:block}
 .fan-card:hover,.fan-card:focus-visible{transform:translateY(calc(var(--y) - 12px)) rotate(var(--r));z-index:20!important}
 .fan-cap{margin:0;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
-@media (prefers-reduced-motion:reduce){.fan-card{transition:none}}
+@media (prefers-reduced-motion:reduce){.fan-card,.dot{transition:none}}
 /* art rares grid */
 .viewtog{display:inline-flex;gap:4px;margin-left:auto}
 ul.dexgrid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px 12px}
@@ -186,9 +202,9 @@ ul.dexgrid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns
       <div class="who" id="who"></div>
     </div>
     <p class="sub">Every Sword &amp; Shield, Scarlet &amp; Violet and Mega Evolution card, ready to check off.</p>
-    <div class="showcase" id="showcase" hidden>
-      <div class="fan" id="fan"></div>
-      <p class="fan-cap" id="fan-cap"></p>
+    <div class="showcase" id="showcase" hidden aria-roledescription="carousel" aria-label="Card art">
+      <div class="slides" id="slides"></div>
+      <div class="dots" id="dots" role="group" aria-label="Choose a slide"></div>
     </div>
   </header>
 
@@ -534,34 +550,68 @@ $("#people").addEventListener("click",e=>{ const b=e.target.closest("[data-perso
 
 function renderAll(){ renderStats(); if(!$("#pane-mine").hidden) renderMine(); if(openSet) renderSetDetail(); else renderSetIndex(); renderChase(); if(!$("#view-art").hidden) renderArt(); renderShowcase() }
 
-/* ---------------- Home showcase: a fanned hand of card art ---------------- */
-let showcaseKey = "";
+/* ---------------- Home showcase: a carousel of card art in a few layouts ---------------- */
+let showcaseKey = "", slideAt = 0, slideTimer = null;
+const SLIDE_MS = 15000;
+const fanBtn = (c, cls, style) => `<button class="fan-card ${cls||""}" data-act="zoom" data-src="${esc(c.image)}/high.webp" aria-label="Show ${esc(c.name)} larger" style="${style||""}">
+      <img referrerpolicy="no-referrer" src="${esc(c.image)}/low.webp" alt="${esc(c.name)}" loading="lazy"></button>`;
+// Three layouts: a fanned hand, a spotlight (one big card with two behind it) and a cascade (cards stepping down in a row)
+const LAYOUTS = {
+  fan: picks => { const mid=(picks.length-1)/2;
+    return `<div class="fan">${picks.map((c,i)=>{ const off=i-mid; return fanBtn(c,"",`--r:${off*9}deg;--y:${Math.abs(off)*10}px;z-index:${10-Math.round(Math.abs(off))}`) }).join("")}</div>` },
+  spotlight: picks => { const [a,b,c] = picks;
+    return `<div class="spot">${b?fanBtn(b,"side left"):""}${fanBtn(a,"main")}${c?fanBtn(c,"side right"):""}</div>` },
+  cascade: picks => `<div class="cascade">${picks.map((c,i)=>fanBtn(c,"",`--y:${i*9}px;z-index:${i+1}`)).join("")}</div>`
+};
+function showcaseSlides(){
+  const byId = {}; for(const s of sets) for(const c of (setCards[s.id]||[])) byId[c.id] = {...c, setId:s.id};
+  const withArt = l => l.filter(c=>c && c.image);
+  const spread = (pool, n) => pool.filter((_,i)=>i%Math.max(1,Math.floor(pool.length/n))===0).slice(0,n);
+  const mains = sets.filter(s=>s.release && !/promo/i.test(s.name));
+  const secretsOf = s => { const l = setCards[s.id]||[], sec = withArt(l.filter(c=>s.official && parseInt(c.localId,10) > s.official)); return sec.length>=3 ? sec : [] };
+  // Up to four slides, in this order; layouts rotate fan → spotlight → cascade so each slide looks different
+  const cands = [], used = new Set();
+  const add = (picks, caption) => { picks = picks.filter(c=>!used.has(c.id)); if(picks.length>=3){ picks.forEach(c=>used.add(c.id)); cands.push({picks, caption}) } };
+  add(withArt(Object.entries(hearts).sort((a,b)=>(b[1].added||0)-(a[1].added||0)).map(([id])=>byId[id])).slice(0,6), "Your favorites");
+  add(withArt(Object.entries(owned).filter(([,o])=>o.status==="have").sort((a,b)=>(b[1].added||0)-(a[1].added||0))
+      .map(([id,o])=>byId[id] || (o.image ? {id, name:o.name, image:o.image} : null))).slice(0,6), "Recently added to your binder");
+  for(const s of mains){ if(cands.length>=4) break; const sec = secretsOf(s); if(sec.length) add(spread(sec.slice(-12).reverse(),6), "Secret rares from "+s.name) }
+  if(!cands.length){ const s = mains.find(s=>withArt(setCards[s.id]||[]).length>=3); if(s) add(spread(withArt(setCards[s.id]).slice(-12),5), "From "+s.name) }
+  const order = ["fan","spotlight","cascade"];
+  const out = cands.slice(0,4).map((x,i)=>{ const layout = order[i%3];
+    return {layout, caption:x.caption, picks: layout==="spotlight" ? x.picks.slice(0,3) : layout==="fan" ? x.picks.slice(0,5) : x.picks.slice(0,6)} });
+  return out;
+}
 function renderShowcase(){
   if(!sets.length) return;
-  const byId = {}; for(const s of sets) for(const c of (setCards[s.id]||[])) byId[c.id] = {...c, setId:s.id};
-  // Your ♥ favorites first (newest hearted first); otherwise the newest set's secret rares
-  let picks = Object.entries(hearts).sort((a,b)=>(b[1].added||0)-(a[1].added||0)).map(([id])=>byId[id]).filter(c=>c&&c.image).slice(0,5);
-  let caption = picks.length ? "Your favorites" : "";
-  if(!picks.length){
-    for(const s of sets.filter(s=>s.release && !/promo/i.test(s.name))){
-      const list = setCards[s.id]||[];
-      const secret = list.filter(c=>c.image && s.official && parseInt(c.localId,10) > s.official);
-      const pool = (secret.length>=3 ? secret : list.filter(c=>c.image)).slice(-12);
-      if(pool.length>=3){ picks = pool.filter((_,i)=>i%Math.max(1,Math.floor(pool.length/5))===0).slice(0,5); caption = "Secret rares from "+s.name; break }
-    }
-  }
-  const key = picks.map(c=>c.id).join(",");
+  const slides = showcaseSlides();
+  const key = slides.map(x=>x.layout+":"+x.picks.map(c=>c.id).join(",")).join("|");
   if(key===showcaseKey) return; showcaseKey = key;
-  $("#showcase").hidden = !picks.length;
-  const n = picks.length, mid = (n-1)/2;
-  $("#fan").innerHTML = picks.map((c,i)=>{
-    const off = i-mid;
-    return `<button class="fan-card" data-act="zoom" data-src="${esc(c.image)}/high.webp" aria-label="Show ${esc(c.name)} larger"
-      style="--r:${off*9}deg;--y:${Math.abs(off)*10}px;z-index:${10-Math.round(Math.abs(off))}">
-      <img referrerpolicy="no-referrer" src="${esc(c.image)}/low.webp" alt="${esc(c.name)}"></button>`;
-  }).join("");
-  $("#fan-cap").textContent = caption;
+  $("#showcase").hidden = !slides.length;
+  $("#slides").innerHTML = slides.map((x,i)=>`<div class="slide" role="group" aria-roledescription="slide" aria-label="${i+1} of ${slides.length}: ${esc(x.caption)}">${LAYOUTS[x.layout](x.picks)}<p class="fan-cap">${esc(x.caption)}</p></div>`).join("");
+  $("#dots").innerHTML = slides.length>1 ? slides.map((x,i)=>`<button class="dot" data-slide="${i}" aria-label="Show slide ${i+1}: ${esc(x.caption)}"></button>`).join("") : "";
+  slideAt = Math.min(slideAt, slides.length-1); goSlide(slideAt, true); restartSlides();
 }
+function goSlide(i, instant){
+  const box = $("#slides"), n = box.children.length; if(!n) return;
+  slideAt = (i+n)%n;
+  box.scrollTo({left: slideAt*box.clientWidth, behavior: instant || matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"});
+  document.querySelectorAll("#dots .dot").forEach((d,k)=>d.setAttribute("aria-current", k===slideAt));
+}
+function restartSlides(){
+  clearInterval(slideTimer);
+  if($("#slides").children.length>1) slideTimer = setInterval(()=>{ if(!document.hidden) goSlide(slideAt+1) }, SLIDE_MS);
+}
+// Swiping: follow where the scroll lands, and give the person a fresh 15 seconds on that slide
+let slideScrollT = null;
+$("#slides").addEventListener("scroll", ()=>{
+  clearTimeout(slideScrollT);
+  slideScrollT = setTimeout(()=>{ const box=$("#slides"), i=Math.round(box.scrollLeft/Math.max(1,box.clientWidth));
+    if(i!==slideAt){ slideAt=i; document.querySelectorAll("#dots .dot").forEach((d,k)=>d.setAttribute("aria-current", k===slideAt)); restartSlides() } }, 120);
+}, {passive:true});
+$("#slides").addEventListener("pointerdown", restartSlides, {passive:true});
+$("#dots").addEventListener("click", e=>{ const d=e.target.closest("[data-slide]"); if(d){ goSlide(+d.dataset.slide); restartSlides() } });
+window.addEventListener("resize", ()=>goSlide(slideAt, true));
 
 /* ---------------- Art rares (IR + SIR by Pokédex number) ---------------- */
 const NAME_FIX = {"mr-mime":"Mr. Mime","mime-jr":"Mime Jr.","mr-rime":"Mr. Rime","ho-oh":"Ho-Oh","porygon-z":"Porygon-Z","type-null":"Type: Null",
