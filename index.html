@@ -111,7 +111,7 @@ ul.list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;ga
 .empty{background:var(--surface);border:1px dashed var(--line);border-radius:12px;padding:20px;text-align:center;color:var(--muted);grid-column:1/-1}
 .note{font-size:13px;color:var(--muted);margin:0}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:600;z-index:30;max-width:calc(100vw - 32px)}
-.viewer{position:fixed;inset:0;background:rgba(5,10,12,.88);display:grid;place-items:center;z-index:20;padding:calc(24px + env(safe-area-inset-top,0px)) 16px calc(24px + env(safe-area-inset-bottom,0px))}
+.viewer{position:fixed;inset:0;overscroll-behavior:contain;touch-action:none;background:rgba(5,10,12,.88);display:grid;place-items:center;z-index:20;padding:calc(24px + env(safe-area-inset-top,0px)) 16px calc(24px + env(safe-area-inset-bottom,0px))}
 .viewer img{max-width:min(92vw,480px);max-height:84vh;border-radius:16px;box-shadow:0 10px 40px rgba(0,0,0,.5)}
 .viewer button{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));right:calc(12px + env(safe-area-inset-right,0px));width:44px;height:44px;border-radius:50%;border:0;background:#fff;color:#111;font:700 18px var(--body);cursor:pointer}
 .more{align-self:center}
@@ -587,7 +587,7 @@ $("#chase-form").addEventListener("submit",e=>{
 document.addEventListener("click",e=>{
   const b=e.target.closest("[data-act]"); if(!b) return;
   const act=b.dataset.act, id=b.dataset.id;
-  if(act==="zoom"){ if(b.dataset.src){ $("#viewer-img").src=b.dataset.src; $("#viewer").hidden=false } return }
+  if(act==="zoom"){ if(b.dataset.src) openViewer(b.dataset.src); return }
   if(act==="fav"){
     const no=b.dataset.no, prev=favs[no], unset = prev && prev.cardId===id;
     if(unset) delete favs[no]; else favs[no]={cardId:id};
@@ -622,7 +622,22 @@ document.addEventListener("click",e=>{
   if(act==="cdel-yes"){ pendingDelete=null; remove("chase",id,"Removed"); return }
   if(act==="got"){ const c=chase[id]; save("chase",id,{...c,got:!c.got}, c.got?"Back on the list":"Found it!") }
 });
-$("#viewer").addEventListener("click",()=>{ $("#viewer").hidden=true; $("#viewer-img").src="" });
+// Full-size card viewer: freezes the page behind it while open (works on iPhone too)
+let lockY = 0;
+function openViewer(src){
+  $("#viewer-img").src = src; $("#viewer").hidden = false;
+  lockY = window.scrollY;
+  Object.assign(document.body.style, {position:"fixed", top:`-${lockY}px`, left:"0", right:"0", overflow:"hidden"});
+}
+function closeViewer(){
+  if($("#viewer").hidden) return;
+  $("#viewer").hidden = true; $("#viewer-img").src = "";
+  Object.assign(document.body.style, {position:"", top:"", left:"", right:"", overflow:""});
+  window.scrollTo(0, lockY);
+}
+$("#viewer").addEventListener("click", closeViewer);
+$("#viewer").addEventListener("touchmove", e=>e.preventDefault(), {passive:false});
+$("#viewer").addEventListener("wheel", e=>e.preventDefault(), {passive:false});
 // If a card picture fails, try the other formats TCGdex offers (webp → png → jpg), then show a placeholder
 document.addEventListener("error", e=>{
   const im = e.target; if(!(im instanceof HTMLImageElement) || !im.src.includes("assets.tcgdex.net")) return;
@@ -633,7 +648,7 @@ document.addEventListener("error", e=>{
   if(box){ im.remove(); if(!box.querySelector(".noimg")) box.insertAdjacentHTML("afterbegin", `<span class="noimg">Picture unavailable</span>`) }
   else im.style.visibility="hidden";
 }, true);
-document.addEventListener("keydown",e=>{ if(e.key==="Escape") $("#viewer").hidden=true });
+document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeViewer() });
 document.addEventListener("visibilitychange",()=>{ if(!document.hidden && $("#app").hidden===false && Store.cloud) refresh() });
 
 /* ---------------- Start ---------------- */
