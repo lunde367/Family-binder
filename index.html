@@ -144,6 +144,7 @@ ul.dex{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap
 .heart[aria-pressed="true"]{color:#E0457B}
 .placeholder{flex:0 0 118px;aspect-ratio:63/88;border:1.5px dashed var(--line);border-radius:7px;display:grid;place-items:center;text-align:center;font-size:12px;color:var(--muted);padding:8px}
 .tabs button{padding:10px 6px}
+@media (max-width:420px){.tabs:not(.small) button{font-size:14px;padding:10px 3px;white-space:nowrap}}
 /* home showcase fan */
 .showcase{display:flex;flex-direction:column;align-items:center;gap:6px;margin-top:6px}
 .fan{display:flex;justify-content:center;align-items:flex-start;padding:14px 0 10px;width:100%;overflow:hidden}
@@ -206,6 +207,7 @@ ul.dexgrid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns
     <div class="tabs" role="tablist">
       <button role="tab" id="tab-col" aria-selected="true">Collection</button>
       <button role="tab" id="tab-art" aria-selected="false">Art rares</button>
+      <button role="tab" id="tab-mega" aria-selected="false">Mega</button>
       <button role="tab" id="tab-chase" aria-selected="false">Chase lists</button>
     </div>
     <p id="status" class="note" hidden></p>
@@ -253,13 +255,13 @@ ul.dexgrid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns
 
     <section id="view-art" class="stack" hidden>
       <div>
-        <h2>Illustration Rares</h2>
-        <p class="note">Every Illustration Rare (IR) and Special Illustration Rare (SIR), by Pokédex number. When a Pokémon has several, tap ☆ to pick the best one. Tap ♡ on any card to add it to your favorites.</p>
+        <h2 id="art-title">Illustration Rares</h2>
+        <p class="note" id="art-note">Every Illustration Rare (IR) and Special Illustration Rare (SIR), by Pokédex number. When a Pokémon has several, tap ☆ to pick the best one. Tap ♡ on any card to add it to your favorites.</p>
       </div>
       <div class="tools">
         <input id="art-search" type="search" placeholder="Search a Pokémon or #number">
         <button class="chip" data-af="all" aria-pressed="true">All</button>
-        <button class="chip" data-af="has" aria-pressed="false">Has art</button>
+        <button class="chip" data-af="has" aria-pressed="false" id="af-has">Has art</button>
         <button class="chip" data-af="own" aria-pressed="false">Owned</button>
         <button class="chip" data-af="miss" aria-pressed="false">Not owned</button>
         <button class="chip" data-af="fav" aria-pressed="false">♥ Favorites</button>
@@ -415,12 +417,14 @@ async function loadCatalog(){
 
 /* ---------------- Rendering ---------------- */
 function showTab(w){
-  for(const t of ["col","art","chase"]){ $("#tab-"+t).setAttribute("aria-selected",t===w); $("#view-"+t).hidden = t!==w }
-  if(w==="art") loadArt();
+  const view = w==="mega" ? "art" : w;   // Mega shares the art rares view
+  for(const t of ["col","art","mega","chase"]) $("#tab-"+t).setAttribute("aria-selected",t===w);
+  for(const t of ["col","art","chase"]) $("#view-"+t).hidden = t!==view;
+  if(w==="art"||w==="mega") setArtMode(w);
   try{ localStorage.setItem("binder-tab",w) }catch(e){}
 }
 function showSub(w){ const m=w==="mine"; $("#sub-mine").setAttribute("aria-selected",m); $("#sub-sets").setAttribute("aria-selected",!m); $("#pane-mine").hidden=!m; $("#pane-sets").hidden=m; if(m) renderMine() }
-$("#tab-col").onclick=()=>showTab("col"); $("#tab-art").onclick=()=>showTab("art"); $("#tab-chase").onclick=()=>showTab("chase");
+$("#tab-col").onclick=()=>showTab("col"); $("#tab-art").onclick=()=>showTab("art"); $("#tab-mega").onclick=()=>showTab("mega"); $("#tab-chase").onclick=()=>showTab("chase");
 $("#sub-mine").onclick=()=>showSub("mine"); $("#sub-sets").onclick=()=>showSub("sets");
 
 function renderStats(){
@@ -555,21 +559,50 @@ const NAME_FIX = {"mr-mime":"Mr. Mime","mime-jr":"Mime Jr.","mr-rime":"Mr. Rime"
   "flabebe":"Flabébé","chi-yu":"Chi-Yu","ting-lu":"Ting-Lu","chien-pao":"Chien-Pao","wo-chien":"Wo-Chien"};
 const monName = s => NAME_FIX[s] || s.split("-").map(w=>w[0].toUpperCase()+w.slice(1)).join(" ");
 const rareKind = r => /special illustration/i.test(r||"") ? "SIR" : /illustration/i.test(r||"") ? "IR" : "";
-let dex = [], artByDex = {}, artState = "idle", artFilter = "all", artQuery = "", artShown = 80;
+let dex = [], artFilter = "all", artQuery = "", artShown = 80;
+// Two card lists share this view: "art" (IR + SIR) and "mega" (every Mega Pokémon card)
+const ART_MODES = {
+  art:  { byDex:{}, state:"idle", title:"Illustration Rares", empty:"No IR or SIR yet", emptyPromo:"No IR, SIR or promo yet",
+          note:"Every Illustration Rare (IR) and Special Illustration Rare (SIR), by Pokédex number. When a Pokémon has several, tap ☆ to pick the best one. Tap ♡ on any card to add it to your favorites.",
+          loading:"Loading every illustration rare and promo… the first time takes a minute or two; after that it's instant." },
+  mega: { byDex:{}, state:"idle", title:"Mega Pokémon", empty:"No Mega cards yet", emptyPromo:"No Mega cards yet",
+          note:"Every Mega Pokémon card, by Pokédex number. When a Pokémon has several, tap ☆ to pick the best one. Tap ♡ on any card to add it to your favorites.",
+          loading:"Loading every Mega card… the first time takes a minute; after that it's instant." }
+};
+let artMode = "art";
+const M = () => ART_MODES[artMode];
+const favKey = no => artMode==="mega" ? "mega-"+no : String(no);   // ★ picks are kept separately per tab
+function setArtMode(mode){
+  if(artMode!==mode){ artMode = mode; artQuery = ""; $("#art-search").value = ""; artShown = 80; artReturn = null; $("#art-back").hidden = true; window.scrollTo(0,0) }
+  const m = M(); $("#art-title").textContent = m.title; $("#art-note").textContent = m.note;
+  $("#af-has").hidden = mode==="mega";   // the Mega tab already lists only Pokémon with a Mega card
+  loadArt(mode);
+}
+// Short rarity tag for a Mega card
+const megaTag = r => { r = r||"";
+  if(/special illustration/i.test(r)) return "SIR"; if(/illustration/i.test(r)) return "IR";
+  if(/hyper/i.test(r)) return "MHR"; if(/ultra/i.test(r)) return "UR"; if(/double/i.test(r)) return "RR";
+  return r ? r.split(/\s+/).map(w=>w[0]).join("").toUpperCase().slice(0,4) : "Mega" };
 
 async function pool(items, n, fn, onStep){
   let i = 0, done = 0;
   await Promise.all(Array.from({length:n}, async ()=>{ while(i<items.length){ const it=items[i++]; try{ await fn(it) }catch(e){} done++; onStep&&onStep(done) } }));
 }
-async function loadArt(){
-  if(artState!=="idle"){ renderArt(); return }
-  artState = "loading"; renderArt();
-  const st = $("#art-status"), say = m => { st.textContent=m; st.hidden=!m };
-  // 1. The Pokédex (names in order) from PokéAPI
+async function loadDex(){
+  if(dex.length) return;
   try{
     const d = await getJSON("pokeapi:species", 30*DAY, "https://pokeapi.co/api/v2/pokemon-species?limit=2000");
     dex = d.results.map(r=>({ no:+r.url.split("/").filter(Boolean).pop(), name:monName(r.name) })).sort((a,b)=>a.no-b.no);
   }catch(e){ dex = [] }
+}
+async function loadArt(mode){
+  if(mode==="mega") return loadMega();
+  const A = ART_MODES.art;
+  if(A.state!=="idle"){ renderArt(); return }
+  A.state = "loading"; renderArt();
+  const st = $("#art-status"), say = m => { if(artMode!=="art") return; st.textContent=m; st.hidden=!m };
+  // 1. The Pokédex (names in order) from PokéAPI
+  await loadDex();
   // 2. Every card whose rarity mentions "illustration", limited to the sets in this binder
   for(let w=0; !sets.length && w<200; w++) await new Promise(r=>setTimeout(r,300));
   let list = [];
@@ -577,7 +610,7 @@ async function loadArt(){
   try{
     list = await getJSON("/cards?rarity=illustration", DAY, undefined, brief);
     if(!list.length) list = await getJSON("/cards?rarity=Illustration", DAY, undefined, brief);
-  }catch(e){ say("Couldn't reach the card database. Check your connection and reopen this tab."); artState="idle"; return }
+  }catch(e){ say("Couldn't reach the card database. Check your connection and reopen this tab."); A.state="idle"; return }
   const mine = new Set(sets.map(s=>s.id));
   list = list.filter(c=>mine.has(c.id.slice(0,c.id.lastIndexOf("-"))));
   // Every card from the promo sets joins too (trainers drop out below because they have no Pokédex number)
@@ -586,7 +619,7 @@ async function loadArt(){
   for(const sid of promoSets) for(const c of (setCards[sid]||[])) if(!seen.has(c.id)) list.push({id:c.id});
   // 3. Card details give the exact rarity and Pokédex number (cached for a month)
   say(`Loading art cards… 0 of ${list.length}`);
-  artByDex = {};
+  const artByDex = A.byDex = {};
   await pool(list, 6, async c=>{
     const setId = c.id.slice(0,c.id.lastIndexOf("-"));
     const full = await getJSON("/cards/"+encodeURIComponent(c.id), v => v&&v.image ? 30*DAY : DAY, undefined,
@@ -598,10 +631,40 @@ async function loadArt(){
   }, done=>{ if(done%20===0) say(`Loading art cards… ${done} of ${list.length}`) });
   // Oldest set first; promos after the main sets
   for(const no in artByDex) artByDex[no].sort((a,b)=> (a.promo-b.promo) || (setById[a.setId]?.release||"").localeCompare(setById[b.setId]?.release||"") || natural(a.localId,b.localId));
-  if(!dex.length){   // PokéAPI unreachable: list only Pokémon that have art
-    dex = Object.keys(artByDex).map(Number).sort((a,b)=>a-b).map(no=>({no, name:artByDex[no][0].name.replace(/ ex$/,"")}));
-  }
-  say(""); artState = "ready"; renderArt();
+  say(""); A.state = "ready"; renderArt();
+}
+async function loadMega(){
+  const G = ART_MODES.mega;
+  if(G.state!=="idle"){ renderArt(); return }
+  G.state = "loading"; renderArt();
+  const st = $("#art-status"), say = m => { if(artMode!=="mega") return; st.textContent=m; st.hidden=!m };
+  await loadDex();
+  for(let w=0; !sets.length && w<200; w++) await new Promise(r=>setTimeout(r,300));
+  // Every card named "Mega …" in this binder's sets (trainers like Mega Signal drop out: no Pokédex number)
+  let list = [];
+  try{ list = await getJSON("/cards?name=mega", DAY, undefined, v=>v.map(c=>({id:c.id, name:c.name}))) }
+  catch(e){ say("Couldn't reach the card database. Check your connection and reopen this tab."); G.state="idle"; return }
+  const mine = new Set(sets.map(s=>s.id)), promoSets = new Set(sets.filter(s=>/promo/i.test(s.name)).map(s=>s.id));
+  list = list.filter(c=>/^mega\s/i.test(c.name||"") && mine.has(c.id.slice(0,c.id.lastIndexOf("-"))));
+  say(`Loading Mega cards… 0 of ${list.length}`);
+  const byDex = G.byDex = {};
+  await pool(list, 6, async c=>{
+    const setId = c.id.slice(0,c.id.lastIndexOf("-"));
+    const full = await getJSON("/cards/"+encodeURIComponent(c.id), v => v&&v.image ? 30*DAY : DAY, undefined,
+      v=>({name:v.name, localId:v.localId, image:v.image, rarity:v.rarity, dexId:v.dexId}));
+    if(!Array.isArray(full.dexId) || !full.dexId.length) return;
+    const promo = promoSets.has(setId);
+    const entry = { id:c.id, name:full.name, image:full.image||"", kind: promo ? "Promo" : megaTag(full.rarity), promo, setId, localId:full.localId };
+    for(const no of full.dexId) (byDex[no] ||= []).push(entry);
+  }, done=>{ if(done%20===0) say(`Loading Mega cards… ${done} of ${list.length}`) });
+  for(const no in byDex) byDex[no].sort((a,b)=> (a.promo-b.promo) || (setById[a.setId]?.release||"").localeCompare(setById[b.setId]?.release||"") || natural(a.localId,b.localId));
+  say(""); G.state = "ready"; renderArt();
+}
+// Pokédex rows for the current tab; without PokéAPI, only Pokémon that have cards
+function dexRows(){
+  if(dex.length) return dex;
+  const by = M().byDex;
+  return Object.keys(by).map(Number).sort((a,b)=>a-b).map(no=>({no, name:by[no][0].name.replace(/^Mega\s+/,"").replace(/ ex$/,"")}));
 }
 // Have toggle for an art card (asks before removing); shared by list and grid views
 function artHaveBtn(c){
@@ -611,14 +674,14 @@ function artHaveBtn(c){
     : `<button class="tog have" data-act="art-have" data-id="${esc(c.id)}" aria-pressed="${have}">${have?`✓ Have${(o.qty||1)>1?" ×"+o.qty:""}`:"Have"}</button>`;
 }
 function artCard(no, c, multi){
-  const isFav = multi && favs[no] && favs[no].cardId===c.id, s = setById[c.setId], loved = !!hearts[c.id];
+  const fk = favKey(no), isFav = multi && favs[fk] && favs[fk].cardId===c.id, s = setById[c.setId], loved = !!hearts[c.id];
   const pic = c.image ? `<img referrerpolicy="no-referrer" src="${esc(c.image)}/low.webp" alt="${esc(c.name)}" loading="lazy">` : `<span class="noimg">No picture yet<br>${esc(c.localId)}</span>`;
   const have = owned[c.id] && owned[c.id].status==="have", haveBtn = artHaveBtn(c);
   return `<div class="art-card ${isFav?"fav":""} ${have?"":"missing"}">
     <button class="art" data-act="zoom" data-src="${c.image?esc(c.image)+"/high.webp":""}" aria-label="Show ${esc(c.name)} larger">${pic}${have?`<span class="badge">✓</span>`:""}</button>
     ${haveBtn}
     <div class="meta"><div class="small"><span class="rtag ${c.promo?"promo":""}">${c.kind}</span><br>${esc(s?s.name:c.setId)} <span class="num">${esc(c.localId)}</span></div>
-    <span class="marks">${multi?`<button class="star" data-act="fav" data-no="${no}" data-id="${esc(c.id)}" aria-pressed="${isFav}" aria-label="${isFav?"Unpick as this Pokémon's best":"Pick as this Pokémon's best"}">${isFav?"★":"☆"}</button>`:""}<button class="star heart" data-act="heart" data-id="${esc(c.id)}" aria-pressed="${loved}" aria-label="${loved?"Remove from favorites":"Add to favorites"}">${loved?"♥":"♡"}</button></span></div></div>`;
+    <span class="marks">${multi?`<button class="star" data-act="fav" data-no="${fk}" data-id="${esc(c.id)}" aria-pressed="${isFav}" aria-label="${isFav?"Unpick as this Pokémon's best":"Pick as this Pokémon's best"}">${isFav?"★":"☆"}</button>`:""}<button class="star heart" data-act="heart" data-id="${esc(c.id)}" aria-pressed="${loved}" aria-label="${loved?"Remove from favorites":"Add to favorites"}">${loved?"♥":"♡"}</button></span></div></div>`;
 }
 // Grid view: one tile per Pokémon; the ☆ pick (or the first card) sits on top of a stack
 // Round ✓ in the tile corner: marks the card on top (your ★ pick, if any) as Have; a second tap on a had card asks before removing
@@ -660,11 +723,14 @@ function backToGrid(){
 }
 function renderArt(){
   const ul = $("#art-list");
-  if(artState!=="ready"){ ul.innerHTML = `<li class="empty">Loading every illustration rare and promo… the first time takes a minute or two; after that it's instant.</li>`; $("#art-more").hidden=true; return }
+  const mode = M(), artByDex = mode.byDex;
+  $("#art-status").hidden = mode.state!=="loading" || !$("#art-status").textContent;
+  if(mode.state!=="ready"){ ul.innerHTML = `<li class="empty">${mode.loading}</li>`; $("#art-more").hidden=true; return }
   const q = artQuery.trim().toLowerCase().replace(/^#/,"");
   const cardsOf = no => (artByDex[no] || []).filter(c=>showPromos || !c.promo);
   const isHave = c => owned[c.id] && owned[c.id].status==="have";
-  const rows = dex.filter(m=>{
+  const rows = dexRows().filter(m=>{
+    if(artMode==="mega" && !cardsOf(m.no).length) return false;   // Mega tab lists only Pokémon with a Mega card
     if(artFilter==="has" && !cardsOf(m.no).length) return false;
     if(artFilter==="fav" && !cardsOf(m.no).some(c=>hearts[c.id])) return false;
     if(artFilter==="own" && !cardsOf(m.no).some(isHave)) return false;
@@ -678,11 +744,11 @@ function renderArt(){
     const cards = artFilter==="fav" ? all.filter(c=>hearts[c.id])          // each filter shows only its matching cards
                 : artFilter==="own" ? all.filter(isHave)
                 : artFilter==="miss" ? all.filter(c=>!isHave(c)) : all;
-    const pick = multi && favs[m.no] ? cards.find(c=>c.id===favs[m.no].cardId) : null;
+    const fk = favKey(m.no), pick = multi && favs[fk] ? cards.find(c=>c.id===favs[fk].cardId) : null;
     const ordered = pick ? [pick, ...cards.filter(c=>c!==pick)] : cards;   // the picked card shows first
     if(artView==="grid") return gridTile(m, ordered, pick);
     return `<li class="mon"><div class="mon-head"><span class="dexno">#${String(m.no).padStart(4,"0")}</span><b>${esc(m.name)}</b>${multi?`<span class="count-chip">${all.length} cards</span>`:""}${pick?`<span class="small">★ pick: ${esc(setById[pick.setId]?.name||"")}</span>`:""}</div>
-      <div class="strip">${ordered.length ? ordered.map(c=>artCard(m.no,c,multi)).join("") : `<div class="placeholder">${showPromos?"No IR, SIR or promo yet":"No IR or SIR yet"}</div>`}</div></li>`;
+      <div class="strip">${ordered.length ? ordered.map(c=>artCard(m.no,c,multi)).join("") : `<div class="placeholder">${showPromos?mode.emptyPromo:mode.empty}</div>`}</div></li>`;
   }).join("");
   $("#art-more").hidden = rows.length<=artShown;
 }
@@ -737,7 +803,7 @@ document.addEventListener("click",e=>{
       pendingDelete=id; renderArt();
       setTimeout(()=>{ if(pendingDelete===id){ pendingDelete=null; renderArt() } }, 4000);
       return }
-    const c = Object.values(artByDex).flat().find(x=>x.id===id); if(!c) return;
+    const c = Object.values(ART_MODES).flatMap(m=>Object.values(m.byDex).flat()).find(x=>x.id===id); if(!c) return;
     save("card", id, {setId:c.setId, localId:c.localId, name:c.name, image:c.image||"", status:"have", qty:1, added:Date.now()}, "Added "+c.name);
     return;
   }
@@ -809,7 +875,7 @@ document.addEventListener("visibilitychange",()=>{ if(!document.hidden && $("#ap
 async function startApp(){
   $("#signin").hidden=true; $("#app").hidden=false;
   loadCatalog();
-  try{ const t=localStorage.getItem("binder-tab"); if(t==="art"||t==="chase") showTab(t) }catch(e){}
+  try{ const t=localStorage.getItem("binder-tab"); if(t==="art"||t==="mega"||t==="chase") showTab(t) }catch(e){}
   await refresh();
 }
 (async()=>{
