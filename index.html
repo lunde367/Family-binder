@@ -241,6 +241,7 @@ ul.dexgrid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns
         <button class="chip" id="art-promos" aria-pressed="true">Promos</button>
         <span class="viewtog" role="group" aria-label="Layout"><button class="chip" data-view="list" aria-pressed="true">☰ List</button><button class="chip" data-view="grid" aria-pressed="false">▦ Grid</button></span>
       </div>
+      <button class="back" id="art-back" data-act="back-grid" hidden>‹ Back to grid</button>
       <p class="note" id="art-status" hidden></p>
       <ul class="dex" id="art-list"></ul>
       <button class="btn more" id="art-more" hidden>Show more</button>
@@ -574,11 +575,23 @@ function gridTile(m, cards, pick){
     </div>
     <div class="gname">${label}</div></li>`;
 }
-function setArtView(v){
+let artReturn = null;   // set when a grid "+N" opens one Pokémon in list view
+function setArtView(v, keepReturn){
   artView = v;
+  if(!keepReturn) artReturn = null;
   document.querySelectorAll("[data-view]").forEach(x=>x.setAttribute("aria-pressed", x.dataset.view===v));
-  try{ localStorage.setItem("binder-artview", v) }catch(e){}
+  try{ if(!keepReturn) localStorage.setItem("binder-artview", v) }catch(e){}
+  $("#art-back").hidden = !artReturn;
   renderArt();
+}
+function backToGrid(){
+  const r = artReturn; if(!r) return;
+  artQuery = r.query; $("#art-search").value = r.field; artShown = r.shown;
+  setArtView("grid");
+  requestAnimationFrame(()=>{   // land back on the same Pokémon
+    const tile = document.querySelector(`#art-list [data-no="${r.no}"]`);
+    if(tile) tile.closest(".gt").scrollIntoView({block:"center"}); else window.scrollTo(0, r.y);
+  });
 }
 function renderArt(){
   const ul = $("#art-list");
@@ -609,6 +622,8 @@ function renderArt(){
   $("#art-more").hidden = rows.length<=artShown;
 }
 $("#art-search").addEventListener("input",e=>{ artQuery=e.target.value; artShown=80; renderArt() });
+// Phone back gesture also returns to the grid
+window.addEventListener("popstate",()=>{ if(artReturn) backToGrid() });
 $("#art-more").onclick=()=>{ artShown+=150; renderArt() };
 document.querySelectorAll("[data-af]").forEach(b=>b.onclick=()=>{ artFilter=b.dataset.af; document.querySelectorAll("[data-af]").forEach(x=>x.setAttribute("aria-pressed",x===b)); artShown=80; renderArt() });
 let artView = "list";
@@ -658,10 +673,14 @@ document.addEventListener("click",e=>{
     save("card", id, {setId:c.setId, localId:c.localId, name:c.name, image:c.image||"", status:"have", qty:1, added:Date.now()}, "Added "+c.name);
     return;
   }
-  if(act==="show-mon"){   // open this Pokémon's full row in list view
-    artQuery = b.dataset.no; $("#art-search").value = "#"+b.dataset.no; artShown = 80; setArtView("list"); window.scrollTo({top:$("#view-art").offsetTop});
+  if(act==="show-mon"){   // open this Pokémon's full row in list view, remembering how to get back
+    artReturn = { query: artQuery, field: $("#art-search").value, shown: artShown, y: window.scrollY, no: b.dataset.no };
+    artQuery = b.dataset.no; $("#art-search").value = "#"+b.dataset.no; artShown = 80;
+    setArtView("list", true); window.scrollTo({top:$("#view-art").offsetTop});
+    try{ history.pushState({binderMon:1}, "") }catch(e){}
     return;
   }
+  if(act==="back-grid"){ if(history.state && history.state.binderMon) history.back(); else backToGrid(); return }
   if(act==="art-unhave"){ pendingDelete=null; remove("card", id, "Removed from your cards"); return }
   if(act==="heart"){
     const had = hearts[id];
