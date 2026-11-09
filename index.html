@@ -129,6 +129,18 @@ ul.list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;ga
 .check{width:34px;height:34px;border-radius:50%;border:2px solid var(--line);background:transparent;cursor:pointer;display:grid;place-items:center;color:transparent;font-weight:800}
 .row.got .check{background:var(--have);border-color:var(--have);color:var(--surface)}
 .people{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.profiles{margin-top:12px;display:flex;flex-direction:column;gap:10px}
+.pbar{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding:2px}
+.pbar::-webkit-scrollbar{display:none}
+.prof{flex:none;display:flex;align-items:center;gap:8px;border:1.5px solid var(--line);background:var(--surface);color:var(--fg);font:700 14px var(--body);padding:4px 14px 4px 4px;border-radius:999px;cursor:pointer}
+.prof[aria-pressed="true"]{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 35%,transparent)}
+.prof .av{width:32px;height:32px;border-radius:50%;background:var(--sunk);display:grid;place-items:center;font:800 14px var(--body);color:var(--muted);overflow:hidden;flex:none}
+.prof .av img{width:120%;height:120%;object-fit:contain}
+.prof.tool{padding:4px 12px;font-weight:600;color:var(--muted)}
+.pedit{display:flex;flex-direction:column;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px}
+.pedit label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--muted)}
+.pedit-acts{display:flex;gap:8px}.pedit-acts .btn{flex:1}
+.pedit .note:empty{display:none}
 .empty{background:var(--surface);border:1px dashed var(--line);border-radius:12px;padding:20px;text-align:center;color:var(--muted);grid-column:1/-1}
 .note{font-size:13px;color:var(--muted);margin:0}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:600;z-index:30;max-width:calc(100vw - 32px)}
@@ -226,6 +238,19 @@ ul.dexgrid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns
       <div class="who" id="who"></div>
     </div>
     <p class="sub">Every Sword &amp; Shield, Scarlet &amp; Violet and Mega Evolution card, ready to check off.</p>
+    <div class="profiles" id="profiles" hidden>
+      <div class="pbar" id="pbar" role="group" aria-label="Whose binder"></div>
+      <form class="pedit" id="pedit" hidden>
+        <label>Avatar for <b id="pedit-who"></b><input id="pedit-mon" list="mon-names" placeholder="Type a Pokémon, e.g. Pikachu" autocomplete="off"></label>
+        <div class="pedit-acts"><button class="btn" type="submit">Save</button><button class="btn ghost" type="button" id="pedit-close">Done</button></div>
+        <p class="note" id="pedit-msg"></p>
+      </form>
+      <form class="pedit" id="padd" hidden>
+        <label>New profile<input id="padd-name" placeholder="Name, e.g. Ava" autocomplete="off"></label>
+        <div class="pedit-acts"><button class="btn" type="submit">Add</button><button class="btn ghost" type="button" id="padd-close">Cancel</button></div>
+      </form>
+      <datalist id="mon-names"></datalist>
+    </div>
     <div class="showcase" id="showcase" hidden aria-roledescription="carousel" aria-label="Card art">
       <div class="slides" id="slides"></div>
       <div class="dots" id="dots" role="group" aria-label="Choose a slide"></div>
@@ -325,7 +350,7 @@ ul.dexgrid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns
 
     <section id="view-value" class="stack" hidden>
       <div>
-        <h2>Collection value</h2>
+        <h2 id="value-title">Collection value</h2>
         <p class="note">Every card you have, most valuable first, at today's market price (TCGplayer, in dollars). Prices refresh about twice a day.</p>
       </div>
       <div class="value-total" id="value-total" hidden></div>
@@ -376,6 +401,20 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt
 
 let sets = [], setById = {}, setCards = {};      // catalog
 let owned = {}, chase = {}, favs = {}, hearts = {}, people = ["Me"];   // favs: Pokédex no → picked card; hearts: overall favorite cards
+/* Profiles: each family member has their own Have list, ♡ favorites and ★ picks. owned/favs/hearts always point at the
+   current profile's. In the database the first profile ("Me") keeps the original kinds (card, fav, heart); everyone
+   else's are tagged with their name, e.g. kind "card@Ava". Chase lists were already per person. */
+const PROFILE_KINDS = ["card","fav","heart"];
+let profile = "Me", byProfile = {}, avatars = {};
+try{ profile = localStorage.getItem("binder-profile") || "Me" }catch(e){}
+const K = (kind, who=profile) => PROFILE_KINDS.includes(kind) && who!==people[0] ? kind+"@"+who : kind;
+const mapsFor = who => byProfile[who] ||= {card:{}, fav:{}, heart:{}};
+function useProfile(who){
+  if(!people.includes(who)) who = people[0];
+  profile = who; const m = mapsFor(who);
+  owned = m.card; favs = m.fav; hearts = m.heart;
+  try{ localStorage.setItem("binder-profile", who) }catch(e){}
+}
 let mineFilter="have", mineQuery="", openSet=null, setFilter="all", setQuery="", setShown=60;
 let personFilter="All", pendingDelete=null;
 
@@ -417,15 +456,16 @@ const Store = (() => {
 })();
 
 function applyItems(items){
-  owned={}; chase={}; favs={}; hearts={}; let fam=null;
-  for(const it of items){
-    if(it.kind==="card") owned[it.id]=it.data;
-    else if(it.kind==="fav") favs[it.id]=it.data;
-    else if(it.kind==="heart") hearts[it.id]=it.data;
-    else if(it.kind==="chase") chase[it.id]=it.data;
-    else if(it.kind==="settings" && it.id==="family") fam=it.data;
-  }
+  chase={}; byProfile={};
+  const fam = (items.find(it=>it.kind==="settings" && it.id==="family")||{}).data;
   people = fam && Array.isArray(fam.names) && fam.names.length ? fam.names : ["Me"];
+  avatars = fam && fam.avatars || {};
+  for(const it of items){
+    if(it.kind==="chase"){ chase[it.id]=it.data; continue }
+    const [base, who] = it.kind.split("@");
+    if(PROFILE_KINDS.includes(base)) mapsFor(who || people[0])[base][it.id] = it.data;
+  }
+  useProfile(profile);
   if(personFilter!=="All" && !people.includes(personFilter)) personFilter="All";
 }
 async function refresh(){
@@ -433,19 +473,20 @@ async function refresh(){
   catch(e){ status("Couldn't load your binder. Check your connection, then pull to refresh.") }
   renderAll();
 }
+// Saves go to the profile that was showing when the tap happened, even if someone switches profiles mid-save
 async function save(kind,id,data,msg){
-  const prev = kind==="card"?owned[id]:kind==="chase"?chase[id]:null;
-  if(kind==="card") owned[id]=data; if(kind==="chase") chase[id]=data;
+  const map = kind==="card"?owned:kind==="chase"?chase:null, dbKind = K(kind), prev = map && map[id];
+  if(map) map[id]=data;
   renderAll();
-  try{ await Store.put(kind,id,data); if(msg) toast(msg) }
-  catch(e){ if(kind==="card"){ if(prev) owned[id]=prev; else delete owned[id] } if(kind==="chase"){ if(prev) chase[id]=prev; else delete chase[id] } renderAll(); toast("Couldn't save. Check your connection and try again.") }
+  try{ await Store.put(dbKind,id,data); if(msg) toast(msg) }
+  catch(e){ if(map){ if(prev) map[id]=prev; else delete map[id] } renderAll(); toast("Couldn't save. Check your connection and try again.") }
 }
 async function remove(kind,id,msg){
-  const prev = kind==="card"?owned[id]:chase[id];
-  if(kind==="card") delete owned[id]; else delete chase[id];
+  const map = kind==="card"?owned:chase, dbKind = K(kind), prev = map[id];
+  delete map[id];
   renderAll();
-  try{ await Store.remove(kind,id); if(msg) toast(msg) }
-  catch(e){ if(kind==="card") owned[id]=prev; else chase[id]=prev; renderAll(); toast("Couldn't save. Check your connection and try again.") }
+  try{ await Store.remove(dbKind,id); if(msg) toast(msg) }
+  catch(e){ map[id]=prev; renderAll(); toast("Couldn't save. Check your connection and try again.") }
 }
 
 /* ---------------- Card catalog from TCGdex (cached for a week) ---------------- */
@@ -655,6 +696,7 @@ async function loadValuePrices(ids){
   renderValue(); renderChase();
 }
 function renderValue(){
+  $("#value-title").textContent = people.length>1 ? `${profile}'s collection value` : "Collection value";
   const mine = Object.entries(owned).filter(([,o])=>o.status==="have").map(([id,o])=>({id, ...o, qty:o.qty||1}));
   const ul = $("#value-list");
   if(!mine.length){ $("#value-total").hidden = true; ul.innerHTML = `<li class="empty">Mark cards as <b>Have</b> and they'll show up here with what they're worth.</li>`; $("#value-more").hidden = true; return }
@@ -692,7 +734,7 @@ function fillChaseOptions(){
 }
 $("#people").addEventListener("click",e=>{ const b=e.target.closest("[data-person]"); if(b){ personFilter=b.dataset.person; renderChase() } });
 
-function renderAll(){ renderStats(); if(!$("#pane-mine").hidden) renderMine(); if(openSet) renderSetDetail(); else renderSetIndex(); renderChase(); if(!$("#view-art").hidden) renderArt(); if(!$("#view-value").hidden) renderValue(); renderShowcase() }
+function renderAll(){ if(!$("#profiles").hidden) renderProfiles(); renderStats(); if(!$("#pane-mine").hidden) renderMine(); if(openSet) renderSetDetail(); else renderSetIndex(); renderChase(); if(!$("#view-art").hidden) renderArt(); if(!$("#view-value").hidden) renderValue(); renderShowcase() }
 
 /* ---------------- Home showcase: a carousel of card art in a few layouts ---------------- */
 let showcaseKey = "", slideAt = 0, slideTimer = null;
@@ -978,13 +1020,63 @@ try{ showPromos = localStorage.getItem("binder-promos")!=="off" }catch(e){}
 $("#art-promos").setAttribute("aria-pressed", showPromos);
 $("#art-promos").onclick=()=>{ showPromos=!showPromos; $("#art-promos").setAttribute("aria-pressed",showPromos); try{ localStorage.setItem("binder-promos", showPromos?"on":"off") }catch(e){} renderArt() };
 
+/* ---------------- Profile switcher ---------------- */
+const saveFamily = msg => Store.put("settings","family",{names:people, avatars}).then(()=>msg&&toast(msg)).catch(()=>toast("Couldn't save. Check your connection and try again."));
+const avatarImg = no => `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${no}.png`;
+function renderProfiles(){
+  $("#pbar").innerHTML = people.map(n=>{ const a = avatars[n];
+    return `<button type="button" class="prof" data-prof="${esc(n)}" aria-pressed="${n===profile}">
+      <span class="av">${a?`<img referrerpolicy="no-referrer" src="${esc(avatarImg(a))}" alt="">`:esc(n.slice(0,1).toUpperCase())}</span>${esc(n)}</button>` }).join("")
+    + `<button type="button" class="prof tool" id="prof-avatar" aria-label="Change ${esc(profile)}'s avatar">Avatar</button>`
+    + `<button type="button" class="prof tool" id="prof-add" aria-label="Add a profile">＋ Add</button>`;
+  const on = $("#pbar [aria-pressed=true]"); if(on) on.scrollIntoView({block:"nearest", inline:"nearest"});
+}
+function switchProfile(who){
+  if(who===profile) return;
+  useProfile(who);
+  personFilter = profile; showcaseKey = ""; pendingDelete = null; valueShown = 50;
+  $("#pedit").hidden = true;
+  renderProfiles(); renderAll();
+  toast(`Showing ${profile}'s binder`);
+}
+$("#pbar").addEventListener("click", e=>{
+  const b = e.target.closest("button"); if(!b) return;
+  if(b.dataset.prof){ switchProfile(b.dataset.prof); return }
+  if(b.id==="prof-add"){ $("#pedit").hidden=true; $("#padd").hidden=false; $("#padd-name").focus(); return }
+  if(b.id==="prof-avatar"){
+    $("#padd").hidden=true; $("#pedit").hidden=false; $("#pedit-who").textContent = profile; $("#pedit-msg").textContent="";
+    const a = avatars[profile], m = a && dex.find(x=>x.no===a); $("#pedit-mon").value = m ? m.name : "";
+    loadDex().then(()=>{ $("#mon-names").innerHTML = dex.map(m=>`<option value="${esc(m.name)}">`).join("") });
+    $("#pedit-mon").focus();
+  }
+});
+$("#pedit").addEventListener("submit", async e=>{
+  e.preventDefault(); await loadDex();
+  const q = $("#pedit-mon").value.trim().toLowerCase();
+  if(!q){ delete avatars[profile]; renderProfiles(); saveFamily("Avatar removed"); $("#pedit").hidden=true; return }
+  const m = dex.find(x=>x.name.toLowerCase()===q) || dex.find(x=>x.name.toLowerCase().startsWith(q));
+  if(!m){ $("#pedit-msg").textContent = "Couldn't find that Pokémon. Try another spelling."; return }
+  avatars[profile] = m.no; renderProfiles(); saveFamily(`${m.name} is ${profile}'s avatar`); $("#pedit").hidden=true;
+});
+$("#pedit-close").onclick=()=>{ $("#pedit").hidden=true };
+$("#padd-close").onclick=()=>{ $("#padd").hidden=true; $("#padd-name").value="" };
+$("#padd").addEventListener("submit", e=>{
+  e.preventDefault(); const n = $("#padd-name").value.trim(); if(!n) return;
+  if(people.includes(n)){ toast(n+" is already a profile"); return }
+  if(n.includes("@")){ toast("Names can't include @"); return }
+  people = [...people, n]; saveFamily("Added "+n);
+  $("#padd").hidden=true; $("#padd-name").value="";
+  renderProfiles(); renderChase(); switchProfile(n);
+});
+
 /* ---------------- Actions ---------------- */
 const newId = () => Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 $("#person-form").addEventListener("submit",e=>{
   e.preventDefault(); const n=$("#p-name").value.trim(); if(!n) return;
   if(people.includes(n)){ toast(n+" is already on the list"); return }
-  people=[...people,n]; personFilter=n; renderChase();
-  Store.put("settings","family",{names:people}).then(()=>toast("Added "+n)).catch(()=>toast("Couldn't save. Check your connection and try again."));
+  if(n.includes("@")){ toast("Names can't include @"); return }
+  people=[...people,n]; personFilter=n; renderChase(); renderProfiles();
+  saveFamily("Added "+n);
   $("#person-form").reset(); $("#add-person-box").open=false;
 });
 /* Chase card picker: every card matching the typed name (in the chosen set, if any); tap the exact one */
@@ -1053,12 +1145,12 @@ document.addEventListener("click",e=>{
   const act=b.dataset.act, id=b.dataset.id;
   if(act==="zoom"){ if(b.dataset.src){ openViewer(b.dataset.src); pushNav() } return }
   if(act==="fav"){
-    const no=b.dataset.no, prev=favs[no], unset = prev && prev.cardId===id;
-    if(unset) delete favs[no]; else favs[no]={cardId:id};
+    const no=b.dataset.no, fv=favs, prev=fv[no], unset = prev && prev.cardId===id, dbKind=K("fav");
+    if(unset) delete fv[no]; else fv[no]={cardId:id};
     renderArt();
-    (unset ? Store.remove("fav",no) : Store.put("fav",no,favs[no]))
+    (unset ? Store.remove(dbKind,no) : Store.put(dbKind,no,fv[no]))
       .then(()=>toast(unset?"Pick removed":"Picked as the best one"))
-      .catch(()=>{ if(prev) favs[no]=prev; else delete favs[no]; renderArt(); toast("Couldn't save. Check your connection and try again.") });
+      .catch(()=>{ if(prev) fv[no]=prev; else delete fv[no]; renderArt(); toast("Couldn't save. Check your connection and try again.") });
     return;
   }
   if(act==="art-have"){
@@ -1081,13 +1173,13 @@ document.addEventListener("click",e=>{
   if(act==="back-grid"){ if(navBack("mon")) backToGrid(); return }
   if(act==="art-unhave"){ pendingDelete=null; remove("card", id, "Removed from your cards"); return }
   if(act==="heart"){
-    const had = hearts[id];
-    if(had) delete hearts[id]; else hearts[id]={added:Date.now()};
+    const hs = hearts, had = hs[id], dbKind = K("heart");
+    if(had) delete hs[id]; else hs[id]={added:Date.now()};
     renderArt();
     renderShowcase();
-    (had ? Store.remove("heart",id) : Store.put("heart",id,hearts[id]))
+    (had ? Store.remove(dbKind,id) : Store.put(dbKind,id,hs[id]))
       .then(()=>toast(had?"Removed from favorites":"Added to favorites"))
-      .catch(()=>{ if(had) hearts[id]=had; else delete hearts[id]; renderArt(); toast("Couldn't save. Check your connection and try again.") });
+      .catch(()=>{ if(had) hs[id]=had; else delete hs[id]; renderArt(); toast("Couldn't save. Check your connection and try again.") });
     return;
   }
   if(act==="have"||act==="need"){
@@ -1139,11 +1231,12 @@ document.addEventListener("visibilitychange",()=>{ if(!document.hidden && $("#ap
 
 /* ---------------- Start ---------------- */
 async function startApp(){
-  $("#signin").hidden=true; $("#app").hidden=false;
+  $("#signin").hidden=true; $("#app").hidden=false; $("#profiles").hidden=false;
   loadCatalog();
   try{ const t=localStorage.getItem("binder-tab"); if(["art","mega","regional","value","chase"].includes(t)) showTab(t) }catch(e){}
   replaceNav();   // the starting point; back from here leaves the app as usual
   await refresh();
+  personFilter = profile; renderChase();   // chase list opens on the current profile
 }
 (async()=>{
   if(!Store.cloud){
