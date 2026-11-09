@@ -1,7 +1,7 @@
 // Family Card Binder offline helper.
 // The page itself: always try the network first (so updates show up), fall back to the saved copy offline.
 // Icons: saved copy first. Card pictures and data are left to the browser and the page's own cache.
-const CACHE = "binder-shell-v1";
+const CACHE = "binder-shell-v2";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/apple-touch-icon.png", "./icons/favicon-32.png"];
 
 self.addEventListener("install", e => {

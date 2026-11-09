@@ -144,6 +144,15 @@ ul.dex{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap
 .heart[aria-pressed="true"]{color:#E0457B}
 .placeholder{flex:0 0 118px;aspect-ratio:63/88;border:1.5px dashed var(--line);border-radius:7px;display:grid;place-items:center;text-align:center;font-size:12px;color:var(--muted);padding:8px}
 .tabs button{padding:10px 6px}
+/* home showcase fan */
+.showcase{display:flex;flex-direction:column;align-items:center;gap:6px;margin-top:6px}
+.fan{display:flex;justify-content:center;align-items:flex-start;padding:14px 0 10px;width:100%;overflow:hidden}
+.fan-card{flex:0 0 auto;width:min(26vw,128px);aspect-ratio:63/88;margin:0 calc(min(26vw,128px) * -0.22);padding:0;border:0;background:var(--sunk);border-radius:6%;overflow:hidden;cursor:zoom-in;
+  transform:translateY(var(--y)) rotate(var(--r));transform-origin:50% 120%;box-shadow:0 6px 18px rgba(0,0,0,.35);transition:transform .25s ease}
+.fan-card img{width:100%;height:100%;object-fit:cover;display:block}
+.fan-card:hover,.fan-card:focus-visible{transform:translateY(calc(var(--y) - 12px)) rotate(var(--r));z-index:20!important}
+.fan-cap{margin:0;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+@media (prefers-reduced-motion:reduce){.fan-card{transition:none}}
 /* art rares grid */
 .viewtog{display:inline-flex;gap:4px;margin-left:auto}
 ul.dexgrid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px 12px}
@@ -172,6 +181,10 @@ ul.dexgrid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns
       <div class="who" id="who"></div>
     </div>
     <p class="sub">Every Scarlet &amp; Violet and Mega Evolution card, ready to check off.</p>
+    <div class="showcase" id="showcase" hidden>
+      <div class="fan" id="fan"></div>
+      <p class="fan-cap" id="fan-cap"></p>
+    </div>
   </header>
 
   <!-- Sign in (only when sync is set up) -->
@@ -388,7 +401,7 @@ async function loadCatalog(){
       const d = details[i] || {};
       setCards[b.id] = (d.cards||[]).slice().sort((a,c)=>natural(a.localId,c.localId));
       return { id:b.id, name:b.name, era:b.era, logo:b.logo?b.logo+".webp":"", release:d.releaseDate||"",
-               total:(b.cardCount&&b.cardCount.total)||setCards[b.id].length };
+               total:(b.cardCount&&b.cardCount.total)||setCards[b.id].length, official:(b.cardCount&&b.cardCount.official)||0 };
     }).sort((a,b)=> (b.release||"0").localeCompare(a.release||"0"));
     setById = Object.fromEntries(sets.map(s=>[s.id,s]));
     status("");
@@ -501,7 +514,36 @@ function fillChaseOptions(){
 }
 $("#people").addEventListener("click",e=>{ const b=e.target.closest("[data-person]"); if(b){ personFilter=b.dataset.person; renderChase() } });
 
-function renderAll(){ renderStats(); if(!$("#pane-mine").hidden) renderMine(); if(openSet) renderSetDetail(); else renderSetIndex(); renderChase(); if(!$("#view-art").hidden) renderArt() }
+function renderAll(){ renderStats(); if(!$("#pane-mine").hidden) renderMine(); if(openSet) renderSetDetail(); else renderSetIndex(); renderChase(); if(!$("#view-art").hidden) renderArt(); renderShowcase() }
+
+/* ---------------- Home showcase: a fanned hand of card art ---------------- */
+let showcaseKey = "";
+function renderShowcase(){
+  if(!sets.length) return;
+  const byId = {}; for(const s of sets) for(const c of (setCards[s.id]||[])) byId[c.id] = {...c, setId:s.id};
+  // Your ♥ favorites first (newest hearted first); otherwise the newest set's secret rares
+  let picks = Object.entries(hearts).sort((a,b)=>(b[1].added||0)-(a[1].added||0)).map(([id])=>byId[id]).filter(c=>c&&c.image).slice(0,5);
+  let caption = picks.length ? "Your favorites" : "";
+  if(!picks.length){
+    for(const s of sets.filter(s=>s.release && !/promo/i.test(s.name))){
+      const list = setCards[s.id]||[];
+      const secret = list.filter(c=>c.image && s.official && parseInt(c.localId,10) > s.official);
+      const pool = (secret.length>=3 ? secret : list.filter(c=>c.image)).slice(-12);
+      if(pool.length>=3){ picks = pool.filter((_,i)=>i%Math.max(1,Math.floor(pool.length/5))===0).slice(0,5); caption = "Secret rares from "+s.name; break }
+    }
+  }
+  const key = picks.map(c=>c.id).join(",");
+  if(key===showcaseKey) return; showcaseKey = key;
+  $("#showcase").hidden = !picks.length;
+  const n = picks.length, mid = (n-1)/2;
+  $("#fan").innerHTML = picks.map((c,i)=>{
+    const off = i-mid;
+    return `<button class="fan-card" data-act="zoom" data-src="${esc(c.image)}/high.webp" aria-label="Show ${esc(c.name)} larger"
+      style="--r:${off*9}deg;--y:${Math.abs(off)*10}px;z-index:${10-Math.round(Math.abs(off))}">
+      <img referrerpolicy="no-referrer" src="${esc(c.image)}/low.webp" alt="${esc(c.name)}"></button>`;
+  }).join("");
+  $("#fan-cap").textContent = caption;
+}
 
 /* ---------------- Art rares (IR + SIR by Pokédex number) ---------------- */
 const NAME_FIX = {"mr-mime":"Mr. Mime","mime-jr":"Mime Jr.","mr-rime":"Mr. Rime","ho-oh":"Ho-Oh","porygon-z":"Porygon-Z","type-null":"Type: Null",
@@ -694,6 +736,7 @@ document.addEventListener("click",e=>{
     const had = hearts[id];
     if(had) delete hearts[id]; else hearts[id]={added:Date.now()};
     renderArt();
+    renderShowcase();
     (had ? Store.remove("heart",id) : Store.put("heart",id,hearts[id]))
       .then(()=>toast(had?"Removed from favorites":"Added to favorites"))
       .catch(()=>{ if(had) hearts[id]=had; else delete hearts[id]; renderArt(); toast("Couldn't save. Check your connection and try again.") });
