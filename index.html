@@ -120,6 +120,9 @@ ul.list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;ga
 .btn.ghost{background:transparent;color:var(--fg);border:1px solid var(--line)}
 .row .thumb{width:76px;aspect-ratio:63/88;border-radius:6px;cursor:zoom-in;box-shadow:0 2px 8px rgba(0,0,0,.25);object-fit:cover;background:var(--sunk)}
 .row .meta{min-width:0}
+.row .price{margin-top:4px;font-weight:700;font-size:15px;color:var(--fg)}
+.row .price .small{font-weight:500;font-size:12px}
+.chase-total{margin:0 2px}
 .row .thumb.nopic{border:1.5px dashed var(--line);color:var(--muted);font:700 22px var(--body);cursor:pointer;padding:0;box-shadow:none}
 .row .name{font-weight:700;font-size:17px;overflow-wrap:anywhere}
 .row.got .name{text-decoration:line-through;color:var(--muted)}
@@ -333,6 +336,7 @@ ul.dexgrid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns
         </form>
         <datalist id="card-names"></datalist>
       </details>
+      <p class="note chase-total" id="chase-total" hidden></p>
       <ul class="list" id="chase-list"></ul>
     </section>
   </div>
@@ -422,7 +426,7 @@ async function remove(kind,id,msg){
 }
 
 /* ---------------- Card catalog from TCGdex (cached for a week) ---------------- */
-const CACHE = "tcgdex-cache-v1", DAY = 864e5, WEEK = 7*DAY;
+const CACHE = "tcgdex-cache-v1", HOUR = 36e5, DAY = 864e5, WEEK = 7*DAY;
 const cacheEntry = k => { try{ return JSON.parse(localStorage.getItem(CACHE+":"+k)) }catch(e){ return null } };
 const cacheSet = (k,v) => { try{ localStorage.setItem(CACHE+":"+k, JSON.stringify({t:Date.now(),v})) }catch(e){} };
 const isNew = date => date && Date.now()-new Date(date).getTime() < 30*DAY;   // released in the last month
@@ -570,12 +574,53 @@ function renderChase(){
     .sort((a,b)=>(a.got?1:0)-(b.got?1:0) || (a.person||"").localeCompare(b.person||"") || a.name.localeCompare(b.name));
   const ul=$("#chase-list");
   if(!shown.length){ ul.innerHTML=`<li class="empty">No chase cards ${personFilter==="All"?"yet":"for "+esc(personFilter)+" yet"}. Tap <b>Add a chase card</b>.</li>`; return }
+  const open = shown.filter(c=>!c.got), priced = open.map(c=>c.cardId && prices[c.cardId]).filter(x=>x && x.value!=null);
+  const usd = priced.filter(x=>x.unit==="USD"), sum = usd.length ? usd : priced.filter(x=>x.unit===(priced[0]&&priced[0].unit)), units = sum.length ? [sum[0].unit] : [];
+  $("#chase-total").hidden = !open.length;
+  $("#chase-total").textContent = `Still chasing ${open.length} card${open.length===1?"":"s"}` +
+    (sum.length ? ` · about ${money(sum.reduce((t,x)=>t+x.value,0), units[0])} at market price${sum.length<open.length?` (${sum.length} of ${open.length} priced)`:""}` : "");
+  loadChasePrices(shown);
   ul.innerHTML = shown.map(c=>`<li class="row ${c.got?"got":""}">
     <button class="check" data-act="got" data-id="${esc(c.id)}" aria-label="${c.got?"Mark as still chasing":"Mark as found"}">✓</button>
     ${c.image?`<img referrerpolicy="no-referrer" class="thumb" src="${esc(c.image)}/low.webp" alt="" loading="lazy" data-act="zoom" data-src="${esc(c.image)}/high.webp">`:`<button class="thumb nopic" data-act="cedit" data-id="${esc(c.id)}" aria-label="Pick the exact card">?</button>`}
-    <div class="meta"><div class="name">${esc(c.name)}</div><div class="small"><b>${esc(c.person)}</b>${c.set?" · "+esc(c.set):""}${c.localId?" "+`<span class="num">${esc(c.localId)}</span>`:""}${c.note?" · "+esc(c.note):""}</div></div>
+    <div class="meta"><div class="name">${esc(c.name)}</div><div class="small"><b>${esc(c.person)}</b>${c.set?" · "+esc(c.set):""}${c.localId?" "+`<span class="num">${esc(c.localId)}</span>`:""}${c.note?" · "+esc(c.note):""}</div>${priceLine(c)}</div>
     ${pendingDelete===c.id?`<span class="acts"><button class="icon" data-act="cdel-yes" data-id="${esc(c.id)}" aria-label="Confirm remove" style="color:var(--need)">✓</button><button class="icon" data-act="del-no" aria-label="Cancel">✕</button></span>`:`<span class="acts"><button class="icon" data-act="cedit" data-id="${esc(c.id)}" aria-label="Change which card">✎</button><button class="icon" data-act="cdel" data-id="${esc(c.id)}" aria-label="Remove">🗑</button></span>`}
   </li>`).join("");
+}
+/* Market prices for chase cards, from TCGdex (TCGplayer in US dollars; Cardmarket in euros when TCGplayer has none). Refreshed twice a day. */
+const prices = {}, priceLoading = new Set();
+const money = (v, unit) => { try{ return new Intl.NumberFormat(undefined,{style:"currency", currency:unit||"USD"}).format(v) }catch(e){ return (unit==="EUR"?"€":"$")+v.toFixed(2) } };
+function pickPrice(pr){
+  if(!pr) return null;
+  const tp = pr.tcgplayer;
+  if(tp){
+    const vars = Object.entries(tp).filter(([,v])=>v && typeof v==="object" && (v.marketPrice!=null || v.midPrice!=null));
+    const order = ["holofoil","holo","normal","reverse-holofoil","reverse"];
+    vars.sort((a,b)=>((order.indexOf(a[0])+1)||99)-((order.indexOf(b[0])+1)||99));
+    if(vars.length){ const v = vars[0][1]; return {value: v.marketPrice ?? v.midPrice, unit: tp.unit||"USD", source:"TCGplayer", updated: tp.updated} }
+  }
+  const cm = pr.cardmarket;
+  if(cm){ const v = cm.trend ?? cm.avg ?? cm["trend-holo"] ?? cm["avg-holo"]; if(v!=null) return {value:v, unit:cm.unit||"EUR", source:"Cardmarket", updated:cm.updated} }
+  return null;
+}
+async function loadChasePrices(list){
+  const need = [...new Set(list.map(c=>c.cardId).filter(id=>id && !(id in prices) && !priceLoading.has(id)))];
+  if(!need.length) return;
+  need.forEach(id=>priceLoading.add(id));
+  await pool(need, 4, async id=>{
+    try{ prices[id] = pickPrice(await getJSON("price:"+id, 12*HOUR, API+"/cards/"+encodeURIComponent(id), v=>v.pricing||null)) || {value:null} }
+    catch(e){ prices[id] = {value:null} }
+    priceLoading.delete(id);
+  });
+  renderChase();
+}
+function priceLine(c){
+  if(!c.cardId) return "";
+  const p = prices[c.cardId];
+  if(!p) return `<div class="price small">Checking price…</div>`;
+  if(p.value==null) return `<div class="price small">No market price yet</div>`;
+  const when = p.updated ? " · "+new Date(p.updated).toLocaleDateString(undefined,{month:"short",day:"numeric"}) : "";
+  return `<div class="price" title="${esc(p.source)} market price${esc(when)}">${money(p.value,p.unit)} <span class="small">${p.source==="TCGplayer"?"market":"Cardmarket"}</span></div>`;
 }
 function fillChaseOptions(){
   const names=[...new Set(Object.values(setCards).flat().map(c=>c.name))].sort();
