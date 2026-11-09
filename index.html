@@ -249,7 +249,7 @@ ul.dex{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap
   </div>
 </div>
 <div class="toast" id="toast" hidden></div>
-<div class="viewer" id="viewer" hidden><button id="viewer-close" aria-label="Close">✕</button><img id="viewer-img" alt=""></div>
+<div class="viewer" id="viewer" hidden><button id="viewer-close" aria-label="Close">✕</button><img referrerpolicy="no-referrer" id="viewer-img" alt=""></div>
 
 <script>
 const API = "https://api.tcgdex.net/v2/en";
@@ -384,7 +384,7 @@ function renderStats(){
 function tile(card, setId){
   const o = owned[card.id], st = o ? o.status : "missing", s = setById[setId];
   const pic = img(card)
-    ? `<img src="${esc(img(card))}" alt="${esc(card.name)}" loading="lazy">`
+    ? `<img referrerpolicy="no-referrer" src="${esc(img(card))}" alt="${esc(card.name)}" loading="lazy">`
     : `<span class="noimg">No picture yet<br>${esc(card.localId)}</span>`;
   let acts;
   if(pendingDelete===card.id) acts = `<button class="tog need" aria-pressed="true" data-act="del-yes" data-id="${esc(card.id)}">Remove</button><button class="icon" data-act="del-no" aria-label="Cancel">✕</button>`;
@@ -411,7 +411,7 @@ function renderSetIndex(){
   const box=$("#set-index");
   if(!sets.length){ box.innerHTML=`<div class="empty">Loading the card lists…</div>`; return }
   const row = s=>{ const h=haveIn(s.id), pct=s.total?Math.round(h/s.total*100):0;
-    return `<button class="setrow" data-open="${esc(s.id)}">${s.logo?`<img class="logo" src="${esc(s.logo)}" alt="" loading="lazy">`:`<span></span>`}<span><b>${esc(s.name)}</b><span class="date">${s.release?fmtDate(s.release):"Promos &amp; extras"}</span></span><span class="count">${h} / ${s.total}</span><div class="bar"><i style="width:${pct}%"></i></div></button>` };
+    return `<button class="setrow" data-open="${esc(s.id)}">${s.logo?`<img referrerpolicy="no-referrer" class="logo" src="${esc(s.logo)}" alt="" loading="lazy">`:`<span></span>`}<span><b>${esc(s.name)}</b><span class="date">${s.release?fmtDate(s.release):"Promos &amp; extras"}</span></span><span class="count">${h} / ${s.total}</span><div class="bar"><i style="width:${pct}%"></i></div></button>` };
   const dated=sets.filter(s=>s.release), extra=sets.filter(s=>!s.release);
   box.innerHTML = `<h3>Newest first</h3>${dated.map(row).join("")}${extra.length?`<h3>Promos &amp; extras</h3>${extra.map(row).join("")}`:""}`;
 }
@@ -458,7 +458,7 @@ function renderChase(){
   if(!shown.length){ ul.innerHTML=`<li class="empty">No chase cards ${personFilter==="All"?"yet":"for "+esc(personFilter)+" yet"}. Tap <b>Add a chase card</b>.</li>`; return }
   ul.innerHTML = shown.map(c=>`<li class="row ${c.got?"got":""}">
     <button class="check" data-act="got" data-id="${esc(c.id)}" aria-label="${c.got?"Mark as still chasing":"Mark as found"}">✓</button>
-    ${c.image?`<img class="thumb" src="${esc(c.image)}/low.webp" alt="" loading="lazy" data-act="zoom" data-src="${esc(c.image)}/high.webp">`:`<span class="thumb"></span>`}
+    ${c.image?`<img referrerpolicy="no-referrer" class="thumb" src="${esc(c.image)}/low.webp" alt="" loading="lazy" data-act="zoom" data-src="${esc(c.image)}/high.webp">`:`<span class="thumb"></span>`}
     <div class="meta"><div class="name">${esc(c.name)}</div><div class="small"><b>${esc(c.person)}</b>${c.set?" · "+esc(c.set):""}${c.note?" · "+esc(c.note):""}</div></div>
     ${pendingDelete===c.id?`<span class="acts"><button class="icon" data-act="cdel-yes" data-id="${esc(c.id)}" aria-label="Confirm remove" style="color:var(--need)">✓</button><button class="icon" data-act="del-no" aria-label="Cancel">✕</button></span>`:`<button class="icon" data-act="cdel" data-id="${esc(c.id)}" aria-label="Remove">🗑</button>`}
   </li>`).join("");
@@ -523,7 +523,7 @@ async function loadArt(){
 }
 function artCard(no, c, multi){
   const isFav = multi && favs[no] && favs[no].cardId===c.id, s = setById[c.setId], loved = !!hearts[c.id];
-  const pic = c.image ? `<img src="${esc(c.image)}/low.webp" alt="${esc(c.name)}" loading="lazy">` : `<span class="noimg">No picture yet<br>${esc(c.localId)}</span>`;
+  const pic = c.image ? `<img referrerpolicy="no-referrer" src="${esc(c.image)}/low.webp" alt="${esc(c.name)}" loading="lazy">` : `<span class="noimg">No picture yet<br>${esc(c.localId)}</span>`;
   return `<div class="art-card ${isFav?"fav":""}">
     <button class="art" data-act="zoom" data-src="${c.image?esc(c.image)+"/high.webp":""}" aria-label="Show ${esc(c.name)} larger">${pic}${owned[c.id]&&owned[c.id].status==="have"?`<span class="badge">✓</span>`:""}</button>
     <div class="meta"><div class="small"><span class="rtag">${c.kind}</span><br>${esc(s?s.name:c.setId)} <span class="num">${esc(c.localId)}</span></div>
@@ -611,6 +611,16 @@ document.addEventListener("click",e=>{
   if(act==="got"){ const c=chase[id]; save("chase",id,{...c,got:!c.got}, c.got?"Back on the list":"Found it!") }
 });
 $("#viewer").addEventListener("click",()=>{ $("#viewer").hidden=true; $("#viewer-img").src="" });
+// If a card picture fails, try the other formats TCGdex offers (webp → png → jpg), then show a placeholder
+document.addEventListener("error", e=>{
+  const im = e.target; if(!(im instanceof HTMLImageElement) || !im.src.includes("assets.tcgdex.net")) return;
+  const next = {".webp":".png", ".png":".jpg"}[(im.src.match(/\.(webp|png)$/)||[])[0]];
+  if(next){ im.src = im.src.replace(/\.(webp|png)$/, next); return }
+  if(im.id==="viewer-img") return;
+  const box = im.closest(".art");
+  if(box){ im.remove(); if(!box.querySelector(".noimg")) box.insertAdjacentHTML("afterbegin", `<span class="noimg">Picture unavailable</span>`) }
+  else im.style.visibility="hidden";
+}, true);
 document.addEventListener("keydown",e=>{ if(e.key==="Escape") $("#viewer").hidden=true });
 document.addEventListener("visibilitychange",()=>{ if(!document.hidden && $("#app").hidden===false && Store.cloud) refresh() });
 
