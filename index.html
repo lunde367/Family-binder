@@ -125,6 +125,8 @@ ul.dex{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap
 .strip{display:flex;gap:10px;overflow-x:auto;padding-bottom:4px;scroll-snap-type:x proximity}
 .art-card{flex:0 0 118px;display:flex;flex-direction:column;gap:5px;scroll-snap-align:start;min-width:0}
 .art-card.fav .art{outline:3px solid #E0A82E;outline-offset:-3px}
+.art-card.missing .art img{filter:grayscale(1);opacity:.5}
+.art-card .tog{flex:none;width:100%}
 .art-card .meta{display:flex;justify-content:space-between;align-items:flex-start;gap:4px}
 .art-card .small{font-size:11px;line-height:1.3}
 .rtag{display:inline-block;font:800 10px var(--body);letter-spacing:.05em;padding:2px 6px;border-radius:999px;background:var(--foil);color:#1b2a30}
@@ -218,6 +220,8 @@ ul.dex{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap
         <input id="art-search" type="search" placeholder="Search a Pokémon or #number">
         <button class="chip" data-af="all" aria-pressed="true">All</button>
         <button class="chip" data-af="has" aria-pressed="false">Has art</button>
+        <button class="chip" data-af="own" aria-pressed="false">Owned</button>
+        <button class="chip" data-af="miss" aria-pressed="false">Not owned</button>
         <button class="chip" data-af="fav" aria-pressed="false">♥ Favorites</button>
         <button class="chip" id="art-promos" aria-pressed="true">Promos</button>
       </div>
@@ -531,8 +535,13 @@ async function loadArt(){
 function artCard(no, c, multi){
   const isFav = multi && favs[no] && favs[no].cardId===c.id, s = setById[c.setId], loved = !!hearts[c.id];
   const pic = c.image ? `<img referrerpolicy="no-referrer" src="${esc(c.image)}/low.webp" alt="${esc(c.name)}" loading="lazy">` : `<span class="noimg">No picture yet<br>${esc(c.localId)}</span>`;
-  return `<div class="art-card ${isFav?"fav":""}">
-    <button class="art" data-act="zoom" data-src="${c.image?esc(c.image)+"/high.webp":""}" aria-label="Show ${esc(c.name)} larger">${pic}${owned[c.id]&&owned[c.id].status==="have"?`<span class="badge">✓</span>`:""}</button>
+  const o = owned[c.id], have = o && o.status==="have", pend = pendingDelete===c.id;
+  const haveBtn = pend
+    ? `<div class="acts"><button class="tog need" aria-pressed="true" data-act="art-unhave" data-id="${esc(c.id)}">Remove</button><button class="icon" data-act="del-no" aria-label="Cancel">✕</button></div>`
+    : `<button class="tog have" data-act="art-have" data-id="${esc(c.id)}" aria-pressed="${have}">${have?`✓ Have${(o.qty||1)>1?" ×"+o.qty:""}`:"Have"}</button>`;
+  return `<div class="art-card ${isFav?"fav":""} ${have?"":"missing"}">
+    <button class="art" data-act="zoom" data-src="${c.image?esc(c.image)+"/high.webp":""}" aria-label="Show ${esc(c.name)} larger">${pic}${have?`<span class="badge">✓</span>`:""}</button>
+    ${haveBtn}
     <div class="meta"><div class="small"><span class="rtag ${c.promo?"promo":""}">${c.kind}</span><br>${esc(s?s.name:c.setId)} <span class="num">${esc(c.localId)}</span></div>
     <span class="marks">${multi?`<button class="star" data-act="fav" data-no="${no}" data-id="${esc(c.id)}" aria-pressed="${isFav}" aria-label="${isFav?"Unpick as this Pokémon's best":"Pick as this Pokémon's best"}">${isFav?"★":"☆"}</button>`:""}<button class="star heart" data-act="heart" data-id="${esc(c.id)}" aria-pressed="${loved}" aria-label="${loved?"Remove from favorites":"Add to favorites"}">${loved?"♥":"♡"}</button></span></div></div>`;
 }
@@ -541,15 +550,20 @@ function renderArt(){
   if(artState!=="ready"){ ul.innerHTML = `<li class="empty">Loading every illustration rare and promo… the first time takes a minute or two; after that it's instant.</li>`; $("#art-more").hidden=true; return }
   const q = artQuery.trim().toLowerCase().replace(/^#/,"");
   const cardsOf = no => (artByDex[no] || []).filter(c=>showPromos || !c.promo);
+  const isHave = c => owned[c.id] && owned[c.id].status==="have";
   const rows = dex.filter(m=>{
     if(artFilter==="has" && !cardsOf(m.no).length) return false;
     if(artFilter==="fav" && !cardsOf(m.no).some(c=>hearts[c.id])) return false;
+    if(artFilter==="own" && !cardsOf(m.no).some(isHave)) return false;
+    if(artFilter==="miss" && !cardsOf(m.no).some(c=>!isHave(c))) return false;
     return !q || m.name.toLowerCase().includes(q) || String(m.no)===q.replace(/^0+/,"");
   });
   if(!rows.length){ ul.innerHTML = `<li class="empty">${artFilter==="fav"?"No favorites yet. Tap ♡ on any card to add it.":"No Pokémon match that search."}</li>`; $("#art-more").hidden=true; return }
   ul.innerHTML = rows.slice(0,artShown).map(m=>{
     const all = cardsOf(m.no), multi = all.length>1;
-    const cards = artFilter==="fav" ? all.filter(c=>hearts[c.id]) : all;   // Favorites view shows only hearted cards
+    const cards = artFilter==="fav" ? all.filter(c=>hearts[c.id])          // each filter shows only its matching cards
+                : artFilter==="own" ? all.filter(isHave)
+                : artFilter==="miss" ? all.filter(c=>!isHave(c)) : all;
     const pick = multi && favs[m.no] ? cards.find(c=>c.id===favs[m.no].cardId) : null;
     const ordered = pick ? [pick, ...cards.filter(c=>c!==pick)] : cards;   // the picked card shows first
     return `<li class="mon"><div class="mon-head"><span class="dexno">#${String(m.no).padStart(4,"0")}</span><b>${esc(m.name)}</b>${multi?`<span class="count-chip">${all.length} cards</span>`:""}${pick?`<span class="small">★ pick: ${esc(setById[pick.setId]?.name||"")}</span>`:""}</div>
@@ -597,6 +611,14 @@ document.addEventListener("click",e=>{
       .catch(()=>{ if(prev) favs[no]=prev; else delete favs[no]; renderArt(); toast("Couldn't save. Check your connection and try again.") });
     return;
   }
+  if(act==="art-have"){
+    const cur = owned[id];
+    if(cur && cur.status==="have"){ pendingDelete=id; renderArt(); return }   // ask before removing
+    const c = Object.values(artByDex).flat().find(x=>x.id===id); if(!c) return;
+    save("card", id, {setId:c.setId, localId:c.localId, name:c.name, image:c.image||"", status:"have", qty:1, added:Date.now()}, "Added "+c.name);
+    return;
+  }
+  if(act==="art-unhave"){ pendingDelete=null; remove("card", id, "Removed from your cards"); return }
   if(act==="heart"){
     const had = hearts[id];
     if(had) delete hearts[id]; else hearts[id]={added:Date.now()};
