@@ -440,16 +440,36 @@ async function loadCatalog(){
 }
 
 /* ---------------- Rendering ---------------- */
+let curTab = "col", curSub = "sets";
 function showTab(w){
+  curTab = w;
   const view = w==="mega"||w==="regional" ? "art" : w;   // Mega and Regional share the art rares view
   for(const t of ["col","art","mega","regional","chase"]) $("#tab-"+t).setAttribute("aria-selected",t===w);
   for(const t of ["col","art","chase"]) $("#view-"+t).hidden = t!==view;
   if(w==="art"||w==="mega"||w==="regional") setArtMode(w);
   try{ localStorage.setItem("binder-tab",w) }catch(e){}
 }
-function showSub(w){ const m=w==="mine"; $("#sub-mine").setAttribute("aria-selected",m); $("#sub-sets").setAttribute("aria-selected",!m); $("#pane-mine").hidden=!m; $("#pane-sets").hidden=m; if(m) renderMine() }
-$("#tab-col").onclick=()=>showTab("col"); $("#tab-art").onclick=()=>showTab("art"); $("#tab-mega").onclick=()=>showTab("mega"); $("#tab-regional").onclick=()=>showTab("regional"); $("#tab-chase").onclick=()=>showTab("chase");
-$("#sub-mine").onclick=()=>showSub("mine"); $("#sub-sets").onclick=()=>showSub("sets");
+function showSub(w){ curSub = w; const m=w==="mine"; $("#sub-mine").setAttribute("aria-selected",m); $("#sub-sets").setAttribute("aria-selected",!m); $("#pane-mine").hidden=!m; $("#pane-sets").hidden=m; if(m) renderMine() }
+for(const t of ["col","art","mega","regional","chase"]) $("#tab-"+t).onclick=()=>{ if(curTab!==t){ showTab(t); pushNav() } };
+$("#sub-mine").onclick=()=>{ if(curSub!=="mine"){ showSub("mine"); pushNav() } }; $("#sub-sets").onclick=()=>{ if(curSub!=="sets"){ showSub("sets"); pushNav() } };
+
+/* ---------------- Phone back gesture ----------------
+   Every move inside the app (tab, sub-tab, opening a set, a Pokémon from the grid, the big card viewer) adds a browser
+   history step, so the phone's back swipe/button steps back through the app instead of leaving it. */
+const navState = () => ({ binder:1, tab:curTab, sub:curSub, set:openSet, mon:!!artReturn, viewer:!$("#viewer").hidden });
+function pushNav(){ try{ history.pushState(navState(), "") }catch(e){} }
+function replaceNav(){ try{ history.replaceState(navState(), "") }catch(e){} }
+window.addEventListener("popstate", e=>{
+  const st = e.state;
+  if(!st || !st.binder){ closeViewer(); return }
+  if(!st.viewer) closeViewer();
+  if(!st.mon && artReturn) backToGrid();
+  if(st.tab!==curTab) showTab(st.tab);
+  if(st.sub!==curSub) showSub(st.sub);
+  if((st.set||null)!==openSet){ if(st.set && setById[st.set]) openSetView(st.set); else closeSet() }
+});
+// Closing something that has its own history step goes back one step, so the step isn't left behind
+const navBack = key => { if(history.state && history.state.binder && history.state[key]) history.back(); else return true };
 
 function renderStats(){
   const v=Object.values(owned), have=v.filter(c=>c.status==="have");
@@ -514,8 +534,9 @@ function openSetView(id){
   document.querySelectorAll("[data-sf]").forEach(x=>x.setAttribute("aria-pressed",x.dataset.sf==="all"));
   $("#set-index").hidden=true; $("#set-detail").hidden=false; renderSetDetail(); window.scrollTo({top:0});
 }
-$("#back").onclick=()=>{ openSet=null; $("#set-detail").hidden=true; $("#set-index").hidden=false; renderSetIndex() };
-$("#set-index").addEventListener("click",e=>{ const b=e.target.closest("[data-open]"); if(b) openSetView(b.dataset.open) });
+function closeSet(){ openSet=null; $("#set-detail").hidden=true; $("#set-index").hidden=false; renderSetIndex() }
+$("#back").onclick=()=>{ if(navBack("set")) closeSet() };
+$("#set-index").addEventListener("click",e=>{ const b=e.target.closest("[data-open]"); if(b){ openSetView(b.dataset.open); pushNav() } });
 $("#set-more").onclick=()=>{ setShown+=120; renderSetDetail() };
 $("#set-search").addEventListener("input",e=>{ setQuery=e.target.value; setShown=60; renderSetDetail() });
 document.querySelectorAll("[data-sf]").forEach(b=>b.onclick=()=>{ setFilter=b.dataset.sf; document.querySelectorAll("[data-sf]").forEach(x=>x.setAttribute("aria-pressed",x===b)); setShown=60; renderSetDetail() });
@@ -823,8 +844,6 @@ function renderArt(){
   $("#art-more").hidden = rows.length<=artShown;
 }
 $("#art-search").addEventListener("input",e=>{ artQuery=e.target.value; artShown=80; renderArt() });
-// Phone back gesture also returns to the grid
-window.addEventListener("popstate",()=>{ if(artReturn) backToGrid() });
 $("#art-more").onclick=()=>{ artShown+=150; renderArt() };
 document.querySelectorAll("[data-af]").forEach(b=>b.onclick=()=>{ artFilter=b.dataset.af; document.querySelectorAll("[data-af]").forEach(x=>x.setAttribute("aria-pressed",x===b)); artShown=80; renderArt() });
 let artView = "list";
@@ -858,7 +877,7 @@ $("#chase-form").addEventListener("submit",e=>{
 document.addEventListener("click",e=>{
   const b=e.target.closest("[data-act]"); if(!b) return;
   const act=b.dataset.act, id=b.dataset.id;
-  if(act==="zoom"){ if(b.dataset.src) openViewer(b.dataset.src); return }
+  if(act==="zoom"){ if(b.dataset.src){ openViewer(b.dataset.src); pushNav() } return }
   if(act==="fav"){
     const no=b.dataset.no, prev=favs[no], unset = prev && prev.cardId===id;
     if(unset) delete favs[no]; else favs[no]={cardId:id};
@@ -882,10 +901,10 @@ document.addEventListener("click",e=>{
     artReturn = { query: artQuery, field: $("#art-search").value, shown: artShown, y: window.scrollY, no: b.dataset.no };
     artQuery = b.dataset.no; $("#art-search").value = "#"+b.dataset.no; artShown = 80;
     setArtView("list", true); window.scrollTo({top:$("#view-art").offsetTop});
-    try{ history.pushState({binderMon:1}, "") }catch(e){}
+    pushNav();
     return;
   }
-  if(act==="back-grid"){ if(history.state && history.state.binderMon) history.back(); else backToGrid(); return }
+  if(act==="back-grid"){ if(navBack("mon")) backToGrid(); return }
   if(act==="art-unhave"){ pendingDelete=null; remove("card", id, "Removed from your cards"); return }
   if(act==="heart"){
     const had = hearts[id];
@@ -926,7 +945,8 @@ function closeViewer(){
   Object.assign(document.body.style, {position:"", top:"", left:"", right:"", overflow:""});
   window.scrollTo(0, lockY);
 }
-$("#viewer").addEventListener("click", closeViewer);
+const dismissViewer = () => { if($("#viewer").hidden) return; if(navBack("viewer")) closeViewer() };
+$("#viewer").addEventListener("click", dismissViewer);
 $("#viewer").addEventListener("touchmove", e=>e.preventDefault(), {passive:false});
 $("#viewer").addEventListener("wheel", e=>e.preventDefault(), {passive:false});
 // If a card picture fails, try the other formats TCGdex offers (webp → png → jpg), then show a placeholder
@@ -939,7 +959,7 @@ document.addEventListener("error", e=>{
   if(box){ im.remove(); if(!box.querySelector(".noimg")) box.insertAdjacentHTML("afterbegin", `<span class="noimg">Picture unavailable</span>`) }
   else im.style.visibility="hidden";
 }, true);
-document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeViewer() });
+document.addEventListener("keydown",e=>{ if(e.key==="Escape") dismissViewer() });
 document.addEventListener("visibilitychange",()=>{ if(!document.hidden && $("#app").hidden===false && Store.cloud) refresh() });
 
 /* ---------------- Start ---------------- */
@@ -947,6 +967,7 @@ async function startApp(){
   $("#signin").hidden=true; $("#app").hidden=false;
   loadCatalog();
   try{ const t=localStorage.getItem("binder-tab"); if(["art","mega","regional","chase"].includes(t)) showTab(t) }catch(e){}
+  replaceNav();   // the starting point; back from here leaves the app as usual
   await refresh();
 }
 (async()=>{
