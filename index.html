@@ -169,8 +169,10 @@ ul.dexgrid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns
 .gname{font-size:12px;font-weight:600;line-height:1.25;overflow-wrap:anywhere}
 .gname .dexno{font:500 10px var(--mono);color:var(--muted)}
 .gt-empty{flex:none;width:auto;margin:0 6px 6px 0}
-.gt .tog{width:calc(100% - 6px);padding:6px 4px;font-size:13px}
-.gt .acts{display:flex;gap:4px;margin-right:6px}.gt .acts .tog{flex:1;width:auto}
+.gcheck{position:absolute;top:5px;right:5px;width:30px;height:30px;border-radius:50%;border:2px solid #fff;background:rgba(10,16,18,.45);color:transparent;font:900 15px/1 var(--body);display:grid;place-items:center;padding:0;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+.gcheck::after{content:"";position:absolute;inset:-7px}
+.gcheck[aria-pressed="true"]{background:var(--have);border-color:var(--have);color:#fff}
+.gcheck.pend{background:var(--need);border-color:var(--need);color:#fff}
 @media (max-width:420px){.cards{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.stat b{font-size:22px}}
 </style>
 </head>
@@ -619,6 +621,12 @@ function artCard(no, c, multi){
     <span class="marks">${multi?`<button class="star" data-act="fav" data-no="${no}" data-id="${esc(c.id)}" aria-pressed="${isFav}" aria-label="${isFav?"Unpick as this Pokémon's best":"Pick as this Pokémon's best"}">${isFav?"★":"☆"}</button>`:""}<button class="star heart" data-act="heart" data-id="${esc(c.id)}" aria-pressed="${loved}" aria-label="${loved?"Remove from favorites":"Add to favorites"}">${loved?"♥":"♡"}</button></span></div></div>`;
 }
 // Grid view: one tile per Pokémon; the ☆ pick (or the first card) sits on top of a stack
+// Round ✓ in the tile corner: marks the card on top (your ★ pick, if any) as Have; a second tap on a had card asks before removing
+function gridCheck(c, monName){
+  const have = owned[c.id] && owned[c.id].status==="have", pend = pendingDelete===c.id;
+  if(pend) return `<button class="gcheck pend" data-act="art-unhave" data-id="${esc(c.id)}" aria-label="Tap again to remove ${esc(c.name)} from your cards">✕</button>`;
+  return `<button class="gcheck" data-act="art-have" data-id="${esc(c.id)}" aria-pressed="${!!have}" aria-label="${have?`You have ${esc(c.name)}. Tap to remove`:`Mark ${esc(c.name)} as have`}">✓</button>`;
+}
 function gridTile(m, cards, pick){
   const top = cards[0], extra = cards.length-1, label = `<span class="dexno">#${String(m.no).padStart(4,"0")}</span> ${esc(m.name)}`;
   if(!top) return `<li class="gt"><div class="placeholder gt-empty">No art yet</div><div class="gname">${label}</div></li>`;
@@ -626,10 +634,10 @@ function gridTile(m, cards, pick){
   const pic = top.image ? `<img referrerpolicy="no-referrer" src="${esc(top.image)}/low.webp" alt="${esc(top.name)}" loading="lazy">` : `<span class="noimg">No picture yet</span>`;
   return `<li class="gt ${have?"":"missing"}">
     <div class="gt-stack ${extra>0?"stacked":""} ${extra>1?"stacked2":""}">
-      <button class="art" data-act="zoom" data-src="${top.image?esc(top.image)+"/high.webp":""}" aria-label="Show ${esc(top.name)} larger">${pic}${have?`<span class="badge">✓</span>`:""}${pick?`<span class="pickmark" aria-label="Your pick">★</span>`:""}</button>
+      <button class="art" data-act="zoom" data-src="${top.image?esc(top.image)+"/high.webp":""}" aria-label="Show ${esc(top.name)} larger">${pic}${pick?`<span class="pickmark" aria-label="Your pick">★</span>`:""}</button>
+      ${gridCheck(top, m.name)}
       ${extra>0?`<button class="more-chip" data-act="show-mon" data-no="${m.no}" aria-label="See all ${cards.length} ${esc(m.name)} cards">+${extra}</button>`:""}
     </div>
-    ${extra===0?artHaveBtn(top):""}
     <div class="gname">${label}</div></li>`;
 }
 let artReturn = null;   // set when a grid "+N" opens one Pokémon in list view
@@ -725,7 +733,10 @@ document.addEventListener("click",e=>{
   }
   if(act==="art-have"){
     const cur = owned[id];
-    if(cur && cur.status==="have"){ pendingDelete=id; renderArt(); return }   // ask before removing
+    if(cur && cur.status==="have"){   // ask before removing; the ask clears itself after 4 seconds
+      pendingDelete=id; renderArt();
+      setTimeout(()=>{ if(pendingDelete===id){ pendingDelete=null; renderArt() } }, 4000);
+      return }
     const c = Object.values(artByDex).flat().find(x=>x.id===id); if(!c) return;
     save("card", id, {setId:c.setId, localId:c.localId, name:c.name, image:c.image||"", status:"have", qty:1, added:Date.now()}, "Added "+c.name);
     return;
