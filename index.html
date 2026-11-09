@@ -118,10 +118,10 @@ ul.list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;ga
 .pick[aria-selected="true"] b{color:var(--accent)}
 .pick b{font-size:11px}
 .btn.ghost{background:transparent;color:var(--fg);border:1px solid var(--line)}
-.row .thumb{width:40px;aspect-ratio:63/88;border-radius:4px;object-fit:cover;background:var(--sunk)}
+.row .thumb{width:76px;aspect-ratio:63/88;border-radius:6px;cursor:zoom-in;box-shadow:0 2px 8px rgba(0,0,0,.25);object-fit:cover;background:var(--sunk)}
 .row .meta{min-width:0}
-.row .thumb.nopic{border:1.5px dashed var(--line);color:var(--muted);font:700 16px var(--body);cursor:pointer;padding:0}
-.row .name{font-weight:700;overflow-wrap:anywhere}
+.row .thumb.nopic{border:1.5px dashed var(--line);color:var(--muted);font:700 22px var(--body);cursor:pointer;padding:0;box-shadow:none}
+.row .name{font-weight:700;font-size:17px;overflow-wrap:anywhere}
 .row.got .name{text-decoration:line-through;color:var(--muted)}
 .check{width:34px;height:34px;border-radius:50%;border:2px solid var(--line);background:transparent;cursor:pointer;display:grid;place-items:center;color:transparent;font-weight:800}
 .row.got .check{background:var(--have);border-color:var(--have);color:var(--surface)}
