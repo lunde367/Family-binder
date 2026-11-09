@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Family Card Binder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap">
+<script>
+/* ============ YOUR SETTINGS ============
+   Leave both blank to save on this device only.
+   Fill them in (see README.md) to sync across every device. */
+window.BINDER_CONFIG = {
+  SUPABASE_URL: "",       // e.g. "https://abcdxyz.supabase.co"
+  SUPABASE_ANON_KEY: ""   // the long "anon public" key
+};
+/* ======================================= */
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<style>
+:root{
+  --bg:#EEF2F4; --surface:#FFFFFF; --sunk:#E2E8EC; --fg:#15232B; --muted:#5B6B74; --line:#D3DCE1;
+  --accent:#0E7C86; --accent-ink:#FFFFFF; --have:#1E8A4C; --have-bg:#DDF2E5; --need:#C2410C; --need-bg:#FBE6DA;
+  --foil:linear-gradient(115deg,#7FD6D9 0%,#C9B6F2 35%,#F6D38A 65%,#8FE0B5 100%);
+  --display:"Bricolage Grotesque","Avenir Next",system-ui,sans-serif;
+  --body:"Figtree","Segoe UI",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0E1619; --surface:#16222A; --sunk:#0A1114; --fg:#E4ECEF; --muted:#93A4AC; --line:#26353D;
+  --accent:#3FC1C9; --accent-ink:#06282B; --have:#5BD08C; --have-bg:#123224; --need:#F59362; --need-bg:#3A1D10; color-scheme:dark}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.45}
+img{max-width:100%}
+[hidden]{display:none!important}
+.wrap{max-width:900px;margin:0 auto;padding-top:calc(20px + env(safe-area-inset-top,0px));padding-bottom:calc(48px + env(safe-area-inset-bottom,0px));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:16px}
+.stack{display:flex;flex-direction:column;gap:14px}
+header{display:flex;flex-direction:column;gap:6px}
+.foil{height:6px;border-radius:3px;background:var(--foil)}
+.toprow{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap}
+h1{font-family:var(--display);font-weight:800;font-size:clamp(28px,7vw,40px);line-height:1.05;margin:6px 0 0;letter-spacing:-.01em}
+h2{font-family:var(--display);font-weight:800;font-size:22px;margin:0;line-height:1.15}
+h3{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:8px 0 0}
+.sub{color:var(--muted);margin:0}
+.who{font-size:13px;color:var(--muted)}
+.who button{border:0;background:none;color:var(--accent);font:600 13px var(--body);cursor:pointer;padding:0}
+.tabs{display:flex;gap:4px;background:var(--sunk);padding:4px;border-radius:12px}
+.tabs button{flex:1;border:0;background:transparent;color:var(--muted);font:600 15px var(--body);padding:10px;border-radius:9px;cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--surface);color:var(--fg);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.tabs.small button{font-size:14px;padding:8px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.stat b{display:block;font-family:var(--display);font-size:26px;font-variant-numeric:tabular-nums;line-height:1.1}
+.stat span{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.bar{height:6px;background:var(--sunk);border-radius:3px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--foil)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:10px}
+details.add{background:var(--surface);border:1px solid var(--line);border-radius:14px}
+details.add summary{cursor:pointer;padding:12px 14px;font-weight:700;list-style:none;display:flex;align-items:center;gap:8px}
+details.add summary::-webkit-details-marker{display:none}
+details.add summary::before{content:"+";display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font-weight:800}
+details.add[open] summary::before{content:"–"}
+form.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 14px 14px}
+form.grid .full{grid-column:1/-1}
+label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;min-width:0}
+input,select{font:500 16px var(--body);color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:9px 10px;width:100%;min-width:0}
+input:focus-visible,select:focus-visible,button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn{border:0;background:var(--accent);color:var(--accent-ink);font:700 15px var(--body);padding:11px 14px;border-radius:10px;cursor:pointer}
+.tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.tools input{flex:1 1 180px}
+.chip{border:1px solid var(--line);background:var(--surface);color:var(--fg);font:600 13px var(--body);padding:7px 12px;border-radius:999px;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+/* card grid */
+.cards{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:8px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.art{position:relative;aspect-ratio:63/88;border-radius:7px;overflow:hidden;background:var(--sunk);border:0;padding:0;cursor:zoom-in;width:100%;max-width:100%}
+.art img{width:100%;height:100%;object-fit:cover;display:block}
+.art .noimg{position:absolute;inset:0;display:grid;place-items:center;font:500 12px var(--mono);color:var(--muted);text-align:center;padding:8px}
+.tile.missing .art img{filter:grayscale(1);opacity:.45}
+.tile.need .art{outline:2px solid var(--need);outline-offset:-2px}
+.badge{position:absolute;top:6px;right:6px;font:800 12px var(--body);padding:3px 7px;border-radius:999px;background:var(--have);color:#fff;font-variant-numeric:tabular-nums}
+.tile .name{font-weight:700;font-size:14px;line-height:1.25;overflow-wrap:anywhere}
+.tile .small{font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.num{font-family:var(--mono);font-size:11px}
+.acts{display:flex;gap:6px;align-items:center;justify-content:space-between}
+.tog{flex:1;border:1px solid var(--line);background:transparent;color:var(--muted);font:700 12px var(--body);padding:7px 4px;border-radius:9px;cursor:pointer;text-transform:uppercase;letter-spacing:.04em}
+.tog.have[aria-pressed="true"]{background:var(--have-bg);color:var(--have);border-color:var(--have)}
+.tog.need[aria-pressed="true"]{background:var(--need-bg);color:var(--need);border-color:var(--need)}
+.icon{border:1px solid var(--line);background:transparent;color:var(--fg);width:32px;height:32px;border-radius:9px;cursor:pointer;font:700 15px var(--body);display:grid;place-items:center;flex:none}
+.qty{font-variant-numeric:tabular-nums;font-weight:700}
+.setrow{display:grid;grid-template-columns:auto 1fr auto;gap:6px 12px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;cursor:pointer;text-align:left;width:100%;font:inherit;color:inherit}
+.setrow .logo{width:64px;height:32px;object-fit:contain}
+.setrow .bar{grid-column:1/-1}
+.setrow .count{font-variant-numeric:tabular-nums;font-weight:700}
+.setrow .date{display:block;font-size:12px;color:var(--muted);font-weight:500}
+.back{border:0;background:transparent;color:var(--accent);font:700 15px var(--body);padding:4px 0;cursor:pointer;align-self:flex-start}
+.sethead{display:flex;flex-direction:column;gap:8px}
+.small{font-size:13px;color:var(--muted)}
+/* chase */
+ul.list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.row{display:grid;grid-template-columns:auto auto 1fr auto;gap:12px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.row .thumb{width:40px;aspect-ratio:63/88;border-radius:4px;object-fit:cover;background:var(--sunk)}
+.row .meta{min-width:0}
+.row .name{font-weight:700;overflow-wrap:anywhere}
+.row.got .name{text-decoration:line-through;color:var(--muted)}
+.check{width:34px;height:34px;border-radius:50%;border:2px solid var(--line);background:transparent;cursor:pointer;display:grid;place-items:center;color:transparent;font-weight:800}
+.row.got .check{background:var(--have);border-color:var(--have);color:var(--surface)}
+.people{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.empty{background:var(--surface);border:1px dashed var(--line);border-radius:12px;padding:20px;text-align:center;color:var(--muted);grid-column:1/-1}
+.note{font-size:13px;color:var(--muted);margin:0}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:600;z-index:30;max-width:calc(100vw - 32px)}
+.viewer{position:fixed;inset:0;background:rgba(5,10,12,.88);display:grid;place-items:center;z-index:20;padding:calc(24px + env(safe-area-inset-top,0px)) 16px calc(24px + env(safe-area-inset-bottom,0px))}
+.viewer img{max-width:min(92vw,480px);max-height:84vh;border-radius:16px;box-shadow:0 10px 40px rgba(0,0,0,.5)}
+.viewer button{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));right:calc(12px + env(safe-area-inset-right,0px));width:44px;height:44px;border-radius:50%;border:0;background:#fff;color:#111;font:700 18px var(--body);cursor:pointer}
+.more{align-self:center}
+@media (max-width:420px){.cards{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.stat b{font-size:22px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="foil"></div>
+    <div class="toprow">
+      <h1>Family Card Binder</h1>
+      <div class="who" id="who"></div>
+    </div>
+    <p class="sub">Every Scarlet &amp; Violet and Mega Evolution card, ready to check off.</p>
+  </header>
+
+  <!-- Sign in (only when sync is set up) -->
+  <section id="signin" class="panel" hidden>
+    <h2>Sign in to your binder</h2>
+    <p class="note">Enter a family email. We'll send a sign-in link; open it on this device.</p>
+    <form id="signin-form" class="stack">
+      <input id="signin-email" type="email" required placeholder="you@example.com" autocomplete="email">
+      <button class="btn" type="submit">Email me a sign-in link</button>
+    </form>
+    <p class="note" id="signin-msg"></p>
+  </section>
+
+  <div id="app" class="stack" hidden>
+    <div class="tabs" role="tablist">
+      <button role="tab" id="tab-col" aria-selected="true">Collection</button>
+      <button role="tab" id="tab-chase" aria-selected="false">Chase lists</button>
+    </div>
+    <p id="status" class="note" hidden></p>
+
+    <section id="view-col" class="stack">
+      <div class="stats">
+        <div class="stat"><b id="s-have">0</b><span>Cards owned</span></div>
+        <div class="stat"><b id="s-copies">0</b><span>Total copies</span></div>
+        <div class="stat"><b id="s-need">0</b><span>Need</span></div>
+      </div>
+      <div class="tabs small" role="tablist">
+        <button role="tab" id="sub-mine" aria-selected="false">My cards</button>
+        <button role="tab" id="sub-sets" aria-selected="true">Browse sets</button>
+      </div>
+
+      <div id="pane-mine" class="stack" hidden>
+        <div class="tools">
+          <input id="search" type="search" placeholder="Search your cards">
+          <button class="chip" data-f="have" aria-pressed="true">Have</button>
+          <button class="chip" data-f="need" aria-pressed="false">Need</button>
+        </div>
+        <ul class="cards" id="mine-list"></ul>
+      </div>
+
+      <div id="pane-sets" class="stack">
+        <div id="set-index" class="stack"></div>
+        <div id="set-detail" class="stack" hidden>
+          <div class="sethead">
+            <button class="back" id="back">‹ All sets</button>
+            <h2 id="set-title"></h2>
+            <div class="small" id="set-progress"></div>
+            <div class="bar"><i id="set-bar" style="width:0"></i></div>
+          </div>
+          <div class="tools">
+            <input id="set-search" type="search" placeholder="Search this set">
+            <button class="chip" data-sf="all" aria-pressed="true">All</button>
+            <button class="chip" data-sf="missing" aria-pressed="false">Missing</button>
+            <button class="chip" data-sf="have" aria-pressed="false">Have</button>
+          </div>
+          <ul class="cards" id="set-list"></ul>
+          <button class="btn more" id="set-more" hidden>Show more</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-chase" class="stack" hidden>
+      <div class="people" id="people"></div>
+      <details class="add" id="add-person-box">
+        <summary>Add a family member</summary>
+        <form class="grid" id="person-form">
+          <label class="full">Name<input id="p-name" required placeholder="e.g. Ava"></label>
+          <button class="btn full" type="submit">Add</button>
+        </form>
+      </details>
+      <details class="add" id="add-chase-box">
+        <summary>Add a chase card</summary>
+        <form class="grid" id="chase-form">
+          <label class="full">Card name<input id="h-name" required list="card-names" placeholder="Start typing a card name"></label>
+          <label>Set<select id="h-set"><option value="">Any set</option></select></label>
+          <label>For<select id="h-person"></select></label>
+          <label class="full">Note<input id="h-note" placeholder="Birthday idea, trade target…"></label>
+          <button class="btn full" type="submit">Add to chase list</button>
+        </form>
+        <datalist id="card-names"></datalist>
+      </details>
+      <ul class="list" id="chase-list"></ul>
+    </section>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+<div class="viewer" id="viewer" hidden><button id="viewer-close" aria-label="Close">✕</button><img id="viewer-img" alt=""></div>
+
+<script>
+const API = "https://api.tcgdex.net/v2/en";
+const SERIES = ["me","sv"];            // Mega Evolution and Scarlet & Violet
+const CFG = window.BINDER_CONFIG || {};
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+let sets = [], setById = {}, setCards = {};      // catalog
+let owned = {}, chase = {}, people = ["Me"];     // your data
+let mineFilter="have", mineQuery="", openSet=null, setFilter="all", setQuery="", setShown=60;
+let personFilter="All", pendingDelete=null;
+
+function toast(m){const t=$("#toast");t.textContent=m;t.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>t.hidden=true,2400)}
+function status(m){const s=$("#status");s.textContent=m||"";s.hidden=!m}
+const fmtDate = d => { if(!d) return ""; const [y,m]=d.split("-"); return ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][+m-1]+" "+y };
+const img = (card, q="low") => card && card.image ? `${card.image}/${q}.webp` : "";
+const natural = (a,b) => String(a).localeCompare(String(b),undefined,{numeric:true});
+
+/* ---------------- Storage: Supabase (synced) or this device ---------------- */
+const Store = (() => {
+  const useCloud = !!(CFG.SUPABASE_URL && CFG.SUPABASE_ANON_KEY && window.supabase);
+  const sb = useCloud ? window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY) : null;
+  const LS = "family-card-binder-v1";
+  const readLocal = () => { try { return JSON.parse(localStorage.getItem(LS)) || {} } catch(e){ return {} } };
+  const writeLocal = d => { try { localStorage.setItem(LS, JSON.stringify(d)) } catch(e){} };
+  return {
+    cloud: useCloud, sb,
+    async loadAll(){
+      if(!useCloud){ const d=readLocal(); return d.items || [] }
+      const out=[]; let from=0;
+      for(;;){
+        const {data,error} = await sb.from("binder_items").select("kind,id,data").range(from, from+999);
+        if(error) throw error; out.push(...data); if(data.length<1000) break; from+=1000;
+      }
+      return out;
+    },
+    async put(kind,id,data){
+      if(!useCloud){ const d=readLocal(); d.items=(d.items||[]).filter(x=>!(x.kind===kind&&x.id===id)); d.items.push({kind,id,data}); writeLocal(d); return }
+      const {error} = await sb.from("binder_items").upsert({kind,id,data,updated_at:new Date().toISOString()});
+      if(error) throw error;
+    },
+    async remove(kind,id){
+      if(!useCloud){ const d=readLocal(); d.items=(d.items||[]).filter(x=>!(x.kind===kind&&x.id===id)); writeLocal(d); return }
+      const {error} = await sb.from("binder_items").delete().match({kind,id});
+      if(error) throw error;
+    }
+  };
+})();
+
+function applyItems(items){
+  owned={}; chase={}; let fam=null;
+  for(const it of items){
+    if(it.kind==="card") owned[it.id]=it.data;
+    else if(it.kind==="chase") chase[it.id]=it.data;
+    else if(it.kind==="settings" && it.id==="family") fam=it.data;
+  }
+  people = fam && Array.isArray(fam.names) && fam.names.length ? fam.names : ["Me"];
+  if(personFilter!=="All" && !people.includes(personFilter)) personFilter="All";
+}
+async function refresh(){
+  try{ applyItems(await Store.loadAll()); status("") }
+  catch(e){ status("Couldn't load your binder. Check your connection, then pull to refresh.") }
+  renderAll();
+}
+async function save(kind,id,data,msg){
+  const prev = kind==="card"?owned[id]:kind==="chase"?chase[id]:null;
+  if(kind==="card") owned[id]=data; if(kind==="chase") chase[id]=data;
+  renderAll();
+  try{ await Store.put(kind,id,data); if(msg) toast(msg) }
+  catch(e){ if(kind==="card"){ if(prev) owned[id]=prev; else delete owned[id] } if(kind==="chase"){ if(prev) chase[id]=prev; else delete chase[id] } renderAll(); toast("Couldn't save. Check your connection and try again.") }
+}
+async function remove(kind,id,msg){
+  const prev = kind==="card"?owned[id]:chase[id];
+  if(kind==="card") delete owned[id]; else delete chase[id];
+  renderAll();
+  try{ await Store.remove(kind,id); if(msg) toast(msg) }
+  catch(e){ if(kind==="card") owned[id]=prev; else chase[id]=prev; renderAll(); toast("Couldn't save. Check your connection and try again.") }
+}
+
+/* ---------------- Card catalog from TCGdex (cached for a week) ---------------- */
+const CACHE = "tcgdex-cache-v1", WEEK = 7*864e5;
+const cacheGet = k => { try{ const c=JSON.parse(localStorage.getItem(CACHE+":"+k)); return c && Date.now()-c.t<WEEK ? c.v : null }catch(e){return null} };
+const cacheSet = (k,v) => { try{ localStorage.setItem(CACHE+":"+k, JSON.stringify({t:Date.now(),v})) }catch(e){} };
+async function getJSON(path){
+  const hit = cacheGet(path); if(hit) return hit;
+  const r = await fetch(API+path); if(!r.ok) throw new Error(r.status);
+  const v = await r.json(); cacheSet(path,v); return v;
+}
+async function loadCatalog(){
+  status("Loading card lists…");
+  try{
+    const series = await Promise.all(SERIES.map(s=>getJSON("/series/"+s)));
+    const briefs = series.flatMap(s=>(s.sets||[]).map(x=>({...x, era:s.name})));
+    const details = await Promise.all(briefs.map(b=>getJSON("/sets/"+encodeURIComponent(b.id)).catch(()=>null)));
+    sets = briefs.map((b,i)=>{
+      const d = details[i] || {};
+      setCards[b.id] = (d.cards||[]).slice().sort((a,c)=>natural(a.localId,c.localId));
+      return { id:b.id, name:b.name, era:b.era, logo:b.logo?b.logo+".webp":"", release:d.releaseDate||"",
+               total:(b.cardCount&&b.cardCount.total)||setCards[b.id].length };
+    }).sort((a,b)=> (b.release||"0").localeCompare(a.release||"0"));
+    setById = Object.fromEntries(sets.map(s=>[s.id,s]));
+    status("");
+  }catch(e){ status("Couldn't reach the card database. Check your connection and reload.") }
+  fillChaseOptions(); renderAll();
+}
+
+/* ---------------- Rendering ---------------- */
+function showTab(w){ const c=w==="col"; $("#tab-col").setAttribute("aria-selected",c); $("#tab-chase").setAttribute("aria-selected",!c); $("#view-col").hidden=!c; $("#view-chase").hidden=c }
+function showSub(w){ const m=w==="mine"; $("#sub-mine").setAttribute("aria-selected",m); $("#sub-sets").setAttribute("aria-selected",!m); $("#pane-mine").hidden=!m; $("#pane-sets").hidden=m; if(m) renderMine() }
+$("#tab-col").onclick=()=>showTab("col"); $("#tab-chase").onclick=()=>showTab("chase");
+$("#sub-mine").onclick=()=>showSub("mine"); $("#sub-sets").onclick=()=>showSub("sets");
+
+function renderStats(){
+  const v=Object.values(owned), have=v.filter(c=>c.status==="have");
+  $("#s-have").textContent=have.length;
+  $("#s-copies").textContent=have.reduce((n,c)=>n+(c.qty||1),0);
+  $("#s-need").textContent=v.filter(c=>c.status==="need").length;
+}
+function tile(card, setId){
+  const o = owned[card.id], st = o ? o.status : "missing", s = setById[setId];
+  const pic = img(card)
+    ? `<img src="${esc(img(card))}" alt="${esc(card.name)}" loading="lazy">`
+    : `<span class="noimg">No picture yet<br>${esc(card.localId)}</span>`;
+  let acts;
+  if(pendingDelete===card.id) acts = `<button class="tog need" aria-pressed="true" data-act="del-yes" data-id="${esc(card.id)}">Remove</button><button class="icon" data-act="del-no" aria-label="Cancel">✕</button>`;
+  else if(st==="have") acts = `<button class="icon" data-act="minus" data-id="${esc(card.id)}" aria-label="One fewer copy">−</button><span class="qty">×${o.qty||1}</span><button class="icon" data-act="plus" data-id="${esc(card.id)}" aria-label="One more copy">+</button>`;
+  else acts = `<button class="tog have" data-act="have" data-id="${esc(card.id)}" data-set="${esc(setId)}" aria-pressed="false">Have</button><button class="tog need" data-act="need" data-id="${esc(card.id)}" data-set="${esc(setId)}" aria-pressed="${st==="need"}">Need</button>`;
+  return `<li class="tile ${st}">
+    <button class="art" data-act="zoom" data-src="${esc(img(card,"high"))}" aria-label="Show ${esc(card.name)} larger">${pic}${st==="have"?`<span class="badge">×${o.qty||1}</span>`:""}</button>
+    <div><div class="name">${esc(card.name)}</div><div class="small"><span class="num">${esc(card.localId)}</span> · ${esc(s?s.name:"")}</div></div>
+    <div class="acts">${acts}</div></li>`;
+}
+function findCard(id, setId){ return (setCards[setId]||[]).find(c=>c.id===id) }
+function renderMine(){
+  const ul=$("#mine-list"), q=mineQuery.toLowerCase();
+  const list = Object.entries(owned).filter(([,c])=>c.status===mineFilter)
+    .map(([id,c])=>({id,...c, card: findCard(id,c.setId) || {id, localId:c.localId, name:c.name, image:c.image}}))
+    .filter(c=>!q || (c.name+" "+(setById[c.setId]?.name||"")).toLowerCase().includes(q))
+    .sort((a,b)=> (setById[b.setId]?.release||"").localeCompare(setById[a.setId]?.release||"") || natural(a.localId,b.localId));
+  if(!Object.keys(owned).length){ ul.innerHTML=`<li class="empty">No cards yet. Open <b>Browse sets</b>, pick a set, and tap <b>Have</b> on the cards you own.</li>`; return }
+  if(!list.length){ ul.innerHTML=`<li class="empty">${mineFilter==="need"?"Nothing on your need list yet.":"No cards match that search."}</li>`; return }
+  ul.innerHTML = list.map(c=>tile(c.card,c.setId)).join("");
+}
+function haveIn(setId){ let n=0; for(const [,c] of Object.entries(owned)) if(c.setId===setId && c.status==="have") n++; return n }
+function renderSetIndex(){
+  const box=$("#set-index");
+  if(!sets.length){ box.innerHTML=`<div class="empty">Loading the card lists…</div>`; return }
+  const row = s=>{ const h=haveIn(s.id), pct=s.total?Math.round(h/s.total*100):0;
+    return `<button class="setrow" data-open="${esc(s.id)}">${s.logo?`<img class="logo" src="${esc(s.logo)}" alt="" loading="lazy">`:`<span></span>`}<span><b>${esc(s.name)}</b><span class="date">${s.release?fmtDate(s.release):"Promos &amp; extras"}</span></span><span class="count">${h} / ${s.total}</span><div class="bar"><i style="width:${pct}%"></i></div></button>` };
+  const dated=sets.filter(s=>s.release), extra=sets.filter(s=>!s.release);
+  box.innerHTML = `<h3>Newest first</h3>${dated.map(row).join("")}${extra.length?`<h3>Promos &amp; extras</h3>${extra.map(row).join("")}`:""}`;
+}
+function renderSetDetail(){
+  const s=setById[openSet]; if(!s) return;
+  const h=haveIn(s.id), pct=s.total?Math.round(h/s.total*100):0;
+  $("#set-title").textContent=s.name;
+  $("#set-progress").textContent=`${h} of ${s.total} collected · ${pct}%${s.release?" · Released "+fmtDate(s.release):""}`;
+  $("#set-bar").style.width=pct+"%";
+  const q=setQuery.toLowerCase();
+  const rows=(setCards[s.id]||[]).filter(c=>{
+    const isHave = owned[c.id] && owned[c.id].status==="have";
+    if(setFilter==="missing" && isHave) return false;
+    if(setFilter==="have" && !isHave) return false;
+    return !q || c.name.toLowerCase().includes(q) || c.localId.toLowerCase()===q;
+  });
+  $("#set-list").innerHTML = rows.length ? rows.slice(0,setShown).map(c=>tile(c,s.id)).join("") : `<li class="empty">No cards match.</li>`;
+  $("#set-more").hidden = rows.length<=setShown;
+}
+function openSetView(id){
+  openSet=id; setQuery=""; setShown=60; $("#set-search").value=""; setFilter="all";
+  document.querySelectorAll("[data-sf]").forEach(x=>x.setAttribute("aria-pressed",x.dataset.sf==="all"));
+  $("#set-index").hidden=true; $("#set-detail").hidden=false; renderSetDetail(); window.scrollTo({top:0});
+}
+$("#back").onclick=()=>{ openSet=null; $("#set-detail").hidden=true; $("#set-index").hidden=false; renderSetIndex() };
+$("#set-index").addEventListener("click",e=>{ const b=e.target.closest("[data-open]"); if(b) openSetView(b.dataset.open) });
+$("#set-more").onclick=()=>{ setShown+=120; renderSetDetail() };
+$("#set-search").addEventListener("input",e=>{ setQuery=e.target.value; setShown=60; renderSetDetail() });
+document.querySelectorAll("[data-sf]").forEach(b=>b.onclick=()=>{ setFilter=b.dataset.sf; document.querySelectorAll("[data-sf]").forEach(x=>x.setAttribute("aria-pressed",x===b)); setShown=60; renderSetDetail() });
+$("#search").addEventListener("input",e=>{ mineQuery=e.target.value; renderMine() });
+document.querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{ mineFilter=b.dataset.f; document.querySelectorAll("[data-f]").forEach(x=>x.setAttribute("aria-pressed",x===b)); renderMine() });
+
+/* chase */
+function renderChase(){
+  const names=["All",...people], list=Object.entries(chase).map(([id,c])=>({id,...c}));
+  $("#people").innerHTML = names.map(n=>{ const k=list.filter(c=>!c.got&&(n==="All"||c.person===n)).length;
+    return `<button class="chip" data-person="${esc(n)}" aria-pressed="${n===personFilter}">${esc(n)} · ${k}</button>` }).join("");
+  const sel=$("#h-person"), prev=sel.value;
+  sel.innerHTML=people.map(n=>`<option>${esc(n)}</option>`).join("");
+  if(people.includes(prev)) sel.value=prev; else if(personFilter!=="All") sel.value=personFilter;
+  const shown=list.filter(c=>personFilter==="All"||c.person===personFilter)
+    .sort((a,b)=>(a.got?1:0)-(b.got?1:0) || (a.person||"").localeCompare(b.person||"") || a.name.localeCompare(b.name));
+  const ul=$("#chase-list");
+  if(!shown.length){ ul.innerHTML=`<li class="empty">No chase cards ${personFilter==="All"?"yet":"for "+esc(personFilter)+" yet"}. Tap <b>Add a chase card</b>.</li>`; return }
+  ul.innerHTML = shown.map(c=>`<li class="row ${c.got?"got":""}">
+    <button class="check" data-act="got" data-id="${esc(c.id)}" aria-label="${c.got?"Mark as still chasing":"Mark as found"}">✓</button>
+    ${c.image?`<img class="thumb" src="${esc(c.image)}/low.webp" alt="" loading="lazy" data-act="zoom" data-src="${esc(c.image)}/high.webp">`:`<span class="thumb"></span>`}
+    <div class="meta"><div class="name">${esc(c.name)}</div><div class="small"><b>${esc(c.person)}</b>${c.set?" · "+esc(c.set):""}${c.note?" · "+esc(c.note):""}</div></div>
+    ${pendingDelete===c.id?`<span class="acts"><button class="icon" data-act="cdel-yes" data-id="${esc(c.id)}" aria-label="Confirm remove" style="color:var(--need)">✓</button><button class="icon" data-act="del-no" aria-label="Cancel">✕</button></span>`:`<button class="icon" data-act="cdel" data-id="${esc(c.id)}" aria-label="Remove">🗑</button>`}
+  </li>`).join("");
+}
+function fillChaseOptions(){
+  const names=[...new Set(Object.values(setCards).flat().map(c=>c.name))].sort();
+  $("#card-names").innerHTML=names.map(n=>`<option value="${esc(n)}">`).join("");
+  $("#h-set").innerHTML=`<option value="">Any set</option>`+sets.map(s=>`<option value="${esc(s.id)}">${esc(s.name)}</option>`).join("");
+}
+$("#people").addEventListener("click",e=>{ const b=e.target.closest("[data-person]"); if(b){ personFilter=b.dataset.person; renderChase() } });
+
+function renderAll(){ renderStats(); if(!$("#pane-mine").hidden) renderMine(); if(openSet) renderSetDetail(); else renderSetIndex(); renderChase() }
+
+/* ---------------- Actions ---------------- */
+const newId = () => Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+$("#person-form").addEventListener("submit",e=>{
+  e.preventDefault(); const n=$("#p-name").value.trim(); if(!n) return;
+  if(people.includes(n)){ toast(n+" is already on the list"); return }
+  people=[...people,n]; personFilter=n; renderChase();
+  Store.put("settings","family",{names:people}).then(()=>toast("Added "+n)).catch(()=>toast("Couldn't save. Check your connection and try again."));
+  $("#person-form").reset(); $("#add-person-box").open=false;
+});
+$("#chase-form").addEventListener("submit",e=>{
+  e.preventDefault();
+  const name=$("#h-name").value.trim(), setId=$("#h-set").value; if(!name) return;
+  const pool = setId ? (setCards[setId]||[]) : sets.flatMap(s=>setCards[s.id]||[]);
+  const match = pool.find(c=>c.name.toLowerCase()===name.toLowerCase());
+  const data = {name, set: setId ? setById[setId]?.name||"" : "", person:$("#h-person").value, note:$("#h-note").value.trim(), got:false, image: match&&match.image||"", added:Date.now()};
+  save("chase", newId(), data, "Added to "+data.person+"'s list");
+  $("#h-name").value=""; $("#h-set").value=""; $("#h-note").value="";
+});
+
+document.addEventListener("click",e=>{
+  const b=e.target.closest("[data-act]"); if(!b) return;
+  const act=b.dataset.act, id=b.dataset.id;
+  if(act==="zoom"){ if(b.dataset.src){ $("#viewer-img").src=b.dataset.src; $("#viewer").hidden=false } return }
+  if(act==="have"||act==="need"){
+    const setId=b.dataset.set, card=findCard(id,setId), cur=owned[id]; if(!card) return;
+    const base={setId, localId:card.localId, name:card.name, image:card.image||"", added:Date.now()};
+    if(act==="have") save("card",id,{...base,status:"have",qty:1},"Added "+card.name);
+    else if(cur&&cur.status==="need") remove("card",id,"Removed from need list");
+    else save("card",id,{...base,status:"need",qty:0},"Added to need list");
+    return;
+  }
+  if(act==="plus"){ const c=owned[id]; save("card",id,{...c,qty:(c.qty||1)+1}); return }
+  if(act==="minus"){ const c=owned[id]; if((c.qty||1)<=1){ pendingDelete=id; renderAll() } else save("card",id,{...c,qty:c.qty-1}); return }
+  if(act==="del-no"){ pendingDelete=null; renderAll(); return }
+  if(act==="del-yes"){ pendingDelete=null; remove("card",id,"Removed"); return }
+  if(act==="cdel"){ pendingDelete=id; renderChase(); return }
+  if(act==="cdel-yes"){ pendingDelete=null; remove("chase",id,"Removed"); return }
+  if(act==="got"){ const c=chase[id]; save("chase",id,{...c,got:!c.got}, c.got?"Back on the list":"Found it!") }
+});
+$("#viewer").addEventListener("click",()=>{ $("#viewer").hidden=true; $("#viewer-img").src="" });
+document.addEventListener("keydown",e=>{ if(e.key==="Escape") $("#viewer").hidden=true });
+document.addEventListener("visibilitychange",()=>{ if(!document.hidden && $("#app").hidden===false && Store.cloud) refresh() });
+
+/* ---------------- Start ---------------- */
+async function startApp(){
+  $("#signin").hidden=true; $("#app").hidden=false;
+  loadCatalog();
+  await refresh();
+}
+(async()=>{
+  if(!Store.cloud){
+    $("#who").textContent="Saved on this device only";
+    startApp(); return;
+  }
+  const sb=Store.sb;
+  const showUser = u => { $("#who").innerHTML = `${esc(u.email)} · <button id="signout">Sign out</button>`;
+    $("#signout").onclick=async()=>{ await sb.auth.signOut(); location.reload() } };
+  const { data:{ session } } = await sb.auth.getSession();
+  if(session){ showUser(session.user); startApp() }
+  else {
+    $("#signin").hidden=false;
+    sb.auth.onAuthStateChange((ev,s)=>{ if(s && $("#app").hidden){ showUser(s.user); startApp() } });
+  }
+  $("#signin-form").addEventListener("submit",async e=>{
+    e.preventDefault();
+    const email=$("#signin-email").value.trim();
+    const { error } = await sb.auth.signInWithOtp({ email, options:{ emailRedirectTo: location.origin+location.pathname, shouldCreateUser:true } });
+    $("#signin-msg").textContent = error ? "Couldn't send the link: "+error.message : "Check your email and tap the link on this device.";
+  });
+})();
+</script>
+</body>
+</html>
