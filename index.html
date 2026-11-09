@@ -157,7 +157,18 @@ ul.dex{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap
 .heart[aria-pressed="true"]{color:#E0457B}
 .placeholder{flex:0 0 118px;aspect-ratio:63/88;border:1.5px dashed var(--line);border-radius:7px;display:grid;place-items:center;text-align:center;font-size:12px;color:var(--muted);padding:8px}
 .tabs button{padding:10px 6px}
-@media (max-width:420px){.tabs:not(.small) button{font-size:13px;padding:9px 2px;line-height:1.2}}
+@media (max-width:560px){
+  .tabs:not(.small){overflow-x:auto;scrollbar-width:none;scroll-snap-type:x proximity}
+  .tabs:not(.small)::-webkit-scrollbar{display:none}
+  .tabs:not(.small) button{flex:0 0 auto;white-space:nowrap;font-size:14px;padding:9px 12px;scroll-snap-align:start}
+}
+.value-total{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+.value-total .big{font:800 30px/1.1 var(--display);letter-spacing:-.01em}
+.value-total .small{margin-top:4px}
+.vrow{grid-template-columns:auto auto 1fr auto}
+.vrow .rank{font:700 13px var(--mono);color:var(--muted);width:22px;text-align:right}
+.vrow .worth{text-align:right;font-weight:800;font-size:16px;white-space:nowrap}
+.vrow .worth .small{display:block;font-weight:500;font-size:12px}
 /* home showcase fan */
 .showcase{display:flex;flex-direction:column;align-items:center;gap:6px;margin-top:6px}
 .slides{display:flex;width:100%;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;overscroll-behavior-x:contain}
@@ -238,6 +249,7 @@ ul.dexgrid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns
       <button role="tab" id="tab-art" aria-selected="false">Art rares</button>
       <button role="tab" id="tab-mega" aria-selected="false">Mega</button>
       <button role="tab" id="tab-regional" aria-selected="false">Regional</button>
+      <button role="tab" id="tab-value" aria-selected="false">Value</button>
       <button role="tab" id="tab-chase" aria-selected="false">Chase lists</button>
     </div>
     <p id="status" class="note" hidden></p>
@@ -309,6 +321,17 @@ ul.dexgrid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns
       <p class="note" id="art-status" hidden></p>
       <ul class="dex" id="art-list"></ul>
       <button class="btn more" id="art-more" hidden>Show more</button>
+    </section>
+
+    <section id="view-value" class="stack" hidden>
+      <div>
+        <h2>Collection value</h2>
+        <p class="note">Every card you have, most valuable first, at today's market price (TCGplayer, in dollars). Prices refresh about twice a day.</p>
+      </div>
+      <div class="value-total" id="value-total" hidden></div>
+      <p class="note" id="value-status" hidden></p>
+      <ul class="list" id="value-list"></ul>
+      <button class="btn more" id="value-more" hidden>Show more</button>
     </section>
 
     <section id="view-chase" class="stack" hidden>
@@ -463,13 +486,15 @@ let curTab = "col", curSub = "sets";
 function showTab(w){
   curTab = w;
   const view = w==="mega"||w==="regional" ? "art" : w;   // Mega and Regional share the art rares view
-  for(const t of ["col","art","mega","regional","chase"]) $("#tab-"+t).setAttribute("aria-selected",t===w);
-  for(const t of ["col","art","chase"]) $("#view-"+t).hidden = t!==view;
+  for(const t of ["col","art","mega","regional","value","chase"]) $("#tab-"+t).setAttribute("aria-selected",t===w);
+  for(const t of ["col","art","value","chase"]) $("#view-"+t).hidden = t!==view;
+  { const b = $("#tab-"+w), bar = b.parentElement; bar.scrollLeft = b.offsetLeft - (bar.clientWidth - b.offsetWidth)/2 }   // keep the chosen tab in view when the bar scrolls on phones
+  if(w==="value"){ valueShown = 50; renderValue() }
   if(w==="art"||w==="mega"||w==="regional") setArtMode(w);
   try{ localStorage.setItem("binder-tab",w) }catch(e){}
 }
 function showSub(w){ curSub = w; const m=w==="mine"; $("#sub-mine").setAttribute("aria-selected",m); $("#sub-sets").setAttribute("aria-selected",!m); $("#pane-mine").hidden=!m; $("#pane-sets").hidden=m; if(m) renderMine() }
-for(const t of ["col","art","mega","regional","chase"]) $("#tab-"+t).onclick=()=>{ if(curTab!==t){ showTab(t); pushNav() } };
+for(const t of ["col","art","mega","regional","value","chase"]) $("#tab-"+t).onclick=()=>{ if(curTab!==t){ showTab(t); pushNav() } };
 $("#sub-mine").onclick=()=>{ if(curSub!=="mine"){ showSub("mine"); pushNav() } }; $("#sub-sets").onclick=()=>{ if(curSub!=="sets"){ showSub("sets"); pushNav() } };
 
 /* ---------------- Phone back gesture ----------------
@@ -608,12 +633,50 @@ async function loadChasePrices(list){
   if(!need.length) return;
   need.forEach(id=>priceLoading.add(id));
   await pool(need, 4, async id=>{
-    try{ prices[id] = pickPrice(await getJSON("price:"+id, 12*HOUR, API+"/cards/"+encodeURIComponent(id), v=>v.pricing||null)) || {value:null} }
-    catch(e){ prices[id] = {value:null} }
-    priceLoading.delete(id);
+    await fetchPrice(id); priceLoading.delete(id);
   });
   renderChase();
 }
+const fetchPrice = async id => {
+  try{ prices[id] = await getJSON("price2:"+id, 12*HOUR, API+"/cards/"+encodeURIComponent(id), v=>pickPrice(v.pricing)||{value:null}) }
+  catch(e){ prices[id] = {value:null} }
+  return prices[id];
+};
+
+/* ---------------- Value: every card you have, most valuable first ---------------- */
+let valueShown = 50, valueLoading = false;
+async function loadValuePrices(ids){
+  if(valueLoading) return; valueLoading = true;
+  const st = $("#value-status"); let done = 0;
+  const say = () => { st.hidden = false; st.textContent = `Checking prices… ${done} of ${ids.length}` };
+  say();
+  await pool(ids, 6, async id=>{ if(!(id in prices)) await fetchPrice(id); done++; if(done%10===0) say() });
+  st.hidden = true; valueLoading = false;
+  renderValue(); renderChase();
+}
+function renderValue(){
+  const mine = Object.entries(owned).filter(([,o])=>o.status==="have").map(([id,o])=>({id, ...o, qty:o.qty||1}));
+  const ul = $("#value-list");
+  if(!mine.length){ $("#value-total").hidden = true; ul.innerHTML = `<li class="empty">Mark cards as <b>Have</b> and they'll show up here with what they're worth.</li>`; $("#value-more").hidden = true; return }
+  const missing = mine.map(c=>c.id).filter(id=>!(id in prices));
+  if(missing.length) loadValuePrices(missing);
+  const priced = mine.map(c=>{ const p = prices[c.id]; return {...c, price:p && p.value!=null && p.unit==="USD" ? p : null} });
+  priced.sort((a,b)=>((b.price?b.price.value*b.qty:-1)-(a.price?a.price.value*a.qty:-1)) || a.name.localeCompare(b.name));
+  const withPrice = priced.filter(c=>c.price), total = withPrice.reduce((t,c)=>t+c.price.value*c.qty,0);
+  const count = mine.reduce((t,c)=>t+c.qty,0), pricedCount = withPrice.reduce((t,c)=>t+c.qty,0);
+  $("#value-total").hidden = false;
+  $("#value-total").innerHTML = `<div class="big">${money(total,"USD")}</div>
+    <div class="small">${count} card${count===1?"":"s"}${pricedCount<count?` · ${pricedCount} with a price${valueLoading?" so far":""}`:""}${withPrice[0]?` · top card ${esc(withPrice[0].name)} at ${money(withPrice[0].price.value,"USD")}`:""}</div>`;
+  ul.innerHTML = priced.slice(0,valueShown).map((c,i)=>{ const st = setById[c.setId];
+    const worth = c.price ? `${money(c.price.value*c.qty,"USD")}${c.qty>1?`<span class="small">${c.qty} × ${money(c.price.value,"USD")}</span>`:""}`
+      : `<span class="small">${c.id in prices ? "No price" : "Checking…"}</span>`;
+    return `<li class="row vrow"><span class="rank">${c.price?i+1:""}</span>
+      ${c.image?`<img referrerpolicy="no-referrer" class="thumb" src="${esc(c.image)}/low.webp" alt="" loading="lazy" data-act="zoom" data-src="${esc(c.image)}/high.webp">`:`<span class="thumb"></span>`}
+      <div class="meta"><div class="name">${esc(c.name)}</div><div class="small">${esc(st?st.name:c.setId||"")}${c.localId?` <span class="num">${esc(c.localId)}</span>`:""}${c.qty>1?` · ×${c.qty}`:""}</div></div>
+      <div class="worth">${worth}</div></li>` }).join("");
+  $("#value-more").hidden = priced.length<=valueShown;
+}
+$("#value-more").onclick=()=>{ valueShown+=100; renderValue() };
 function priceLine(c){
   if(!c.cardId) return "";
   const p = prices[c.cardId];
@@ -629,7 +692,7 @@ function fillChaseOptions(){
 }
 $("#people").addEventListener("click",e=>{ const b=e.target.closest("[data-person]"); if(b){ personFilter=b.dataset.person; renderChase() } });
 
-function renderAll(){ renderStats(); if(!$("#pane-mine").hidden) renderMine(); if(openSet) renderSetDetail(); else renderSetIndex(); renderChase(); if(!$("#view-art").hidden) renderArt(); renderShowcase() }
+function renderAll(){ renderStats(); if(!$("#pane-mine").hidden) renderMine(); if(openSet) renderSetDetail(); else renderSetIndex(); renderChase(); if(!$("#view-art").hidden) renderArt(); if(!$("#view-value").hidden) renderValue(); renderShowcase() }
 
 /* ---------------- Home showcase: a carousel of card art in a few layouts ---------------- */
 let showcaseKey = "", slideAt = 0, slideTimer = null;
@@ -1078,7 +1141,7 @@ document.addEventListener("visibilitychange",()=>{ if(!document.hidden && $("#ap
 async function startApp(){
   $("#signin").hidden=true; $("#app").hidden=false;
   loadCatalog();
-  try{ const t=localStorage.getItem("binder-tab"); if(["art","mega","regional","chase"].includes(t)) showTab(t) }catch(e){}
+  try{ const t=localStorage.getItem("binder-tab"); if(["art","mega","regional","value","chase"].includes(t)) showTab(t) }catch(e){}
   replaceNav();   // the starting point; back from here leaves the app as usual
   await refresh();
 }
