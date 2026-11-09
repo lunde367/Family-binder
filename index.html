@@ -144,7 +144,7 @@ ul.dex{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap
 .heart[aria-pressed="true"]{color:#E0457B}
 .placeholder{flex:0 0 118px;aspect-ratio:63/88;border:1.5px dashed var(--line);border-radius:7px;display:grid;place-items:center;text-align:center;font-size:12px;color:var(--muted);padding:8px}
 .tabs button{padding:10px 6px}
-@media (max-width:420px){.tabs:not(.small) button{font-size:14px;padding:10px 3px;white-space:nowrap}}
+@media (max-width:420px){.tabs:not(.small) button{font-size:13px;padding:9px 2px;line-height:1.2}}
 /* home showcase fan */
 .showcase{display:flex;flex-direction:column;align-items:center;gap:6px;margin-top:6px}
 .fan{display:flex;justify-content:center;align-items:flex-start;padding:14px 0 10px;width:100%;overflow:hidden}
@@ -208,6 +208,7 @@ ul.dexgrid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns
       <button role="tab" id="tab-col" aria-selected="true">Collection</button>
       <button role="tab" id="tab-art" aria-selected="false">Art rares</button>
       <button role="tab" id="tab-mega" aria-selected="false">Mega</button>
+      <button role="tab" id="tab-regional" aria-selected="false">Regional</button>
       <button role="tab" id="tab-chase" aria-selected="false">Chase lists</button>
     </div>
     <p id="status" class="note" hidden></p>
@@ -267,6 +268,13 @@ ul.dexgrid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns
         <button class="chip" data-af="fav" aria-pressed="false">♥ Favorites</button>
         <button class="chip" id="art-promos" aria-pressed="true">Promos</button>
         <span class="viewtog" role="group" aria-label="Layout"><button class="chip" data-view="list" aria-pressed="true">☰ List</button><button class="chip" data-view="grid" aria-pressed="false">▦ Grid</button></span>
+      </div>
+      <div class="tools" id="region-chips" hidden role="group" aria-label="Region">
+        <button class="chip" data-region="" aria-pressed="true">All regions</button>
+        <button class="chip" data-region="Alolan" aria-pressed="false">Alolan</button>
+        <button class="chip" data-region="Galarian" aria-pressed="false">Galarian</button>
+        <button class="chip" data-region="Hisuian" aria-pressed="false">Hisuian</button>
+        <button class="chip" data-region="Paldean" aria-pressed="false">Paldean</button>
       </div>
       <button class="back" id="art-back" data-act="back-grid" hidden>‹ Back to grid</button>
       <p class="note" id="art-status" hidden></p>
@@ -417,14 +425,14 @@ async function loadCatalog(){
 
 /* ---------------- Rendering ---------------- */
 function showTab(w){
-  const view = w==="mega" ? "art" : w;   // Mega shares the art rares view
-  for(const t of ["col","art","mega","chase"]) $("#tab-"+t).setAttribute("aria-selected",t===w);
+  const view = w==="mega"||w==="regional" ? "art" : w;   // Mega and Regional share the art rares view
+  for(const t of ["col","art","mega","regional","chase"]) $("#tab-"+t).setAttribute("aria-selected",t===w);
   for(const t of ["col","art","chase"]) $("#view-"+t).hidden = t!==view;
-  if(w==="art"||w==="mega") setArtMode(w);
+  if(w==="art"||w==="mega"||w==="regional") setArtMode(w);
   try{ localStorage.setItem("binder-tab",w) }catch(e){}
 }
 function showSub(w){ const m=w==="mine"; $("#sub-mine").setAttribute("aria-selected",m); $("#sub-sets").setAttribute("aria-selected",!m); $("#pane-mine").hidden=!m; $("#pane-sets").hidden=m; if(m) renderMine() }
-$("#tab-col").onclick=()=>showTab("col"); $("#tab-art").onclick=()=>showTab("art"); $("#tab-mega").onclick=()=>showTab("mega"); $("#tab-chase").onclick=()=>showTab("chase");
+$("#tab-col").onclick=()=>showTab("col"); $("#tab-art").onclick=()=>showTab("art"); $("#tab-mega").onclick=()=>showTab("mega"); $("#tab-regional").onclick=()=>showTab("regional"); $("#tab-chase").onclick=()=>showTab("chase");
 $("#sub-mine").onclick=()=>showSub("mine"); $("#sub-sets").onclick=()=>showSub("sets");
 
 function renderStats(){
@@ -560,25 +568,30 @@ const NAME_FIX = {"mr-mime":"Mr. Mime","mime-jr":"Mime Jr.","mr-rime":"Mr. Rime"
 const monName = s => NAME_FIX[s] || s.split("-").map(w=>w[0].toUpperCase()+w.slice(1)).join(" ");
 const rareKind = r => /special illustration/i.test(r||"") ? "SIR" : /illustration/i.test(r||"") ? "IR" : "";
 let dex = [], artFilter = "all", artQuery = "", artShown = 80;
-// Two card lists share this view: "art" (IR + SIR) and "mega" (every Mega Pokémon card)
+// Three card lists share this view: "art" (IR + SIR), "mega" (every Mega card) and "regional" (Alolan, Galarian, Hisuian, Paldean forms)
 const ART_MODES = {
   art:  { byDex:{}, state:"idle", title:"Illustration Rares", empty:"No IR or SIR yet", emptyPromo:"No IR, SIR or promo yet",
           note:"Every Illustration Rare (IR) and Special Illustration Rare (SIR), by Pokédex number. When a Pokémon has several, tap ☆ to pick the best one. Tap ♡ on any card to add it to your favorites.",
           loading:"Loading every illustration rare and promo… the first time takes a minute or two; after that it's instant." },
-  mega: { byDex:{}, state:"idle", title:"Mega Pokémon", empty:"No Mega cards yet", emptyPromo:"No Mega cards yet",
+  mega: { byDex:{}, state:"idle", prefixes:["Mega"], title:"Mega Pokémon", empty:"No Mega cards yet", emptyPromo:"No Mega cards yet",
           note:"Every Mega Pokémon card, by Pokédex number. When a Pokémon has several, tap ☆ to pick the best one. Tap ♡ on any card to add it to your favorites.",
-          loading:"Loading every Mega card… the first time takes a minute; after that it's instant." }
+          loading:"Loading every Mega card… the first time takes a minute; after that it's instant." },
+  regional: { byDex:{}, state:"idle", prefixes:["Alolan","Galarian","Hisuian","Paldean"], title:"Regional Forms", empty:"No regional cards yet", emptyPromo:"No regional cards yet",
+          note:"Every Alolan, Galarian, Hisuian and Paldean Pokémon card, by Pokédex number. Pick a region to narrow the list. When a Pokémon has several, tap ☆ to pick the best one. Tap ♡ on any card to add it to your favorites.",
+          loading:"Loading every regional form card… the first time takes a minute; after that it's instant." }
 };
+let regionFilter = "";
 let artMode = "art";
 const M = () => ART_MODES[artMode];
-const favKey = no => artMode==="mega" ? "mega-"+no : String(no);   // ★ picks are kept separately per tab
+const favKey = no => artMode==="art" ? String(no) : artMode+"-"+no;   // ★ picks are kept separately per tab
 function setArtMode(mode){
   if(artMode!==mode){ artMode = mode; artQuery = ""; $("#art-search").value = ""; artShown = 80; artReturn = null; $("#art-back").hidden = true; window.scrollTo(0,0) }
   const m = M(); $("#art-title").textContent = m.title; $("#art-note").textContent = m.note;
-  $("#af-has").hidden = mode==="mega";   // the Mega tab already lists only Pokémon with a Mega card
+  $("#af-has").hidden = mode!=="art";   // Mega and Regional already list only Pokémon that have cards
+  $("#region-chips").hidden = mode!=="regional";
   loadArt(mode);
 }
-// Short rarity tag for a Mega card
+// Short rarity tag for Mega and regional cards
 const megaTag = r => { r = r||"";
   if(/special illustration/i.test(r)) return "SIR"; if(/illustration/i.test(r)) return "IR";
   if(/hyper/i.test(r)) return "MHR"; if(/ultra/i.test(r)) return "UR"; if(/double/i.test(r)) return "RR";
@@ -596,7 +609,7 @@ async function loadDex(){
   }catch(e){ dex = [] }
 }
 async function loadArt(mode){
-  if(mode==="mega") return loadMega();
+  if(mode!=="art") return loadNamed(mode);
   const A = ART_MODES.art;
   if(A.state!=="idle"){ renderArt(); return }
   A.state = "loading"; renderArt();
@@ -633,30 +646,35 @@ async function loadArt(mode){
   for(const no in artByDex) artByDex[no].sort((a,b)=> (a.promo-b.promo) || (setById[a.setId]?.release||"").localeCompare(setById[b.setId]?.release||"") || natural(a.localId,b.localId));
   say(""); A.state = "ready"; renderArt();
 }
-async function loadMega(){
-  const G = ART_MODES.mega;
+// Cards whose name starts with one of the tab's prefixes ("Mega …", "Alolan …"), limited to this binder's sets
+async function loadNamed(key){
+  const G = ART_MODES[key], label = key==="mega" ? "Mega" : "regional";
   if(G.state!=="idle"){ renderArt(); return }
   G.state = "loading"; renderArt();
-  const st = $("#art-status"), say = m => { if(artMode!=="mega") return; st.textContent=m; st.hidden=!m };
+  const st = $("#art-status"), say = m => { if(artMode!==key) return; st.textContent=m; st.hidden=!m };
   await loadDex();
   for(let w=0; !sets.length && w<200; w++) await new Promise(r=>setTimeout(r,300));
-  // Every card named "Mega …" in this binder's sets (trainers like Mega Signal drop out: no Pokédex number)
+  // Trainers like Mega Signal or Paldean Student drop out below: no Pokédex number
   let list = [];
-  try{ list = await getJSON("/cards?name=mega", DAY, undefined, v=>v.map(c=>({id:c.id, name:c.name}))) }
-  catch(e){ say("Couldn't reach the card database. Check your connection and reopen this tab."); G.state="idle"; return }
+  try{
+    const found = await Promise.all(G.prefixes.map(px=>getJSON("/cards?name="+px.toLowerCase(), DAY, undefined, v=>v.map(c=>({id:c.id, name:c.name})))));
+    const seen = new Set(); list = found.flat().filter(c=>!seen.has(c.id) && seen.add(c.id));
+  }catch(e){ say("Couldn't reach the card database. Check your connection and reopen this tab."); G.state="idle"; return }
   const mine = new Set(sets.map(s=>s.id)), promoSets = new Set(sets.filter(s=>/promo/i.test(s.name)).map(s=>s.id));
-  list = list.filter(c=>/^mega\s/i.test(c.name||"") && mine.has(c.id.slice(0,c.id.lastIndexOf("-"))));
-  say(`Loading Mega cards… 0 of ${list.length}`);
+  const prefixOf = n => G.prefixes.find(px=>new RegExp("^"+px+"\\s","i").test(n||""));
+  list = list.filter(c=>prefixOf(c.name) && mine.has(c.id.slice(0,c.id.lastIndexOf("-"))));
+  say(`Loading ${label} cards… 0 of ${list.length}`);
   const byDex = G.byDex = {};
   await pool(list, 6, async c=>{
     const setId = c.id.slice(0,c.id.lastIndexOf("-"));
     const full = await getJSON("/cards/"+encodeURIComponent(c.id), v => v&&v.image ? 30*DAY : DAY, undefined,
       v=>({name:v.name, localId:v.localId, image:v.image, rarity:v.rarity, dexId:v.dexId}));
     if(!Array.isArray(full.dexId) || !full.dexId.length) return;
-    const promo = promoSets.has(setId);
-    const entry = { id:c.id, name:full.name, image:full.image||"", kind: promo ? "Promo" : megaTag(full.rarity), promo, setId, localId:full.localId };
+    const promo = promoSets.has(setId), region = key==="regional" ? prefixOf(full.name||c.name) : "";
+    const tag = promo ? "Promo" : megaTag(full.rarity);
+    const entry = { id:c.id, name:full.name, image:full.image||"", kind: region ? region+" "+tag : tag, region, promo, setId, localId:full.localId };
     for(const no of full.dexId) (byDex[no] ||= []).push(entry);
-  }, done=>{ if(done%20===0) say(`Loading Mega cards… ${done} of ${list.length}`) });
+  }, done=>{ if(done%20===0) say(`Loading ${label} cards… ${done} of ${list.length}`) });
   for(const no in byDex) byDex[no].sort((a,b)=> (a.promo-b.promo) || (setById[a.setId]?.release||"").localeCompare(setById[b.setId]?.release||"") || natural(a.localId,b.localId));
   say(""); G.state = "ready"; renderArt();
 }
@@ -664,7 +682,7 @@ async function loadMega(){
 function dexRows(){
   if(dex.length) return dex;
   const by = M().byDex;
-  return Object.keys(by).map(Number).sort((a,b)=>a-b).map(no=>({no, name:by[no][0].name.replace(/^Mega\s+/,"").replace(/ ex$/,"")}));
+  return Object.keys(by).map(Number).sort((a,b)=>a-b).map(no=>({no, name:by[no][0].name.replace(/^(Mega|Alolan|Galarian|Hisuian|Paldean)\s+/,"").replace(/ ex$/,"")}));
 }
 // Have toggle for an art card (asks before removing); shared by list and grid views
 function artHaveBtn(c){
@@ -727,10 +745,10 @@ function renderArt(){
   $("#art-status").hidden = mode.state!=="loading" || !$("#art-status").textContent;
   if(mode.state!=="ready"){ ul.innerHTML = `<li class="empty">${mode.loading}</li>`; $("#art-more").hidden=true; return }
   const q = artQuery.trim().toLowerCase().replace(/^#/,"");
-  const cardsOf = no => (artByDex[no] || []).filter(c=>showPromos || !c.promo);
+  const cardsOf = no => (artByDex[no] || []).filter(c=>(showPromos || !c.promo) && (artMode!=="regional" || !regionFilter || c.region===regionFilter));
   const isHave = c => owned[c.id] && owned[c.id].status==="have";
   const rows = dexRows().filter(m=>{
-    if(artMode==="mega" && !cardsOf(m.no).length) return false;   // Mega tab lists only Pokémon with a Mega card
+    if(artMode!=="art" && !cardsOf(m.no).length) return false;   // Mega and Regional list only Pokémon with matching cards
     if(artFilter==="has" && !cardsOf(m.no).length) return false;
     if(artFilter==="fav" && !cardsOf(m.no).some(c=>hearts[c.id])) return false;
     if(artFilter==="own" && !cardsOf(m.no).some(isHave)) return false;
@@ -760,6 +778,7 @@ document.querySelectorAll("[data-af]").forEach(b=>b.onclick=()=>{ artFilter=b.da
 let artView = "list";
 try{ if(localStorage.getItem("binder-artview")==="grid") artView="grid" }catch(e){}
 document.querySelectorAll("[data-view]").forEach(b=>{ b.setAttribute("aria-pressed", b.dataset.view===artView); b.onclick=()=>setArtView(b.dataset.view) });
+document.querySelectorAll("[data-region]").forEach(b=>b.onclick=()=>{ regionFilter=b.dataset.region; document.querySelectorAll("[data-region]").forEach(x=>x.setAttribute("aria-pressed",x===b)); artShown=80; renderArt() });
 let showPromos = true;
 try{ showPromos = localStorage.getItem("binder-promos")!=="off" }catch(e){}
 $("#art-promos").setAttribute("aria-pressed", showPromos);
@@ -875,7 +894,7 @@ document.addEventListener("visibilitychange",()=>{ if(!document.hidden && $("#ap
 async function startApp(){
   $("#signin").hidden=true; $("#app").hidden=false;
   loadCatalog();
-  try{ const t=localStorage.getItem("binder-tab"); if(t==="art"||t==="mega"||t==="chase") showTab(t) }catch(e){}
+  try{ const t=localStorage.getItem("binder-tab"); if(["art","mega","regional","chase"].includes(t)) showTab(t) }catch(e){}
   await refresh();
 }
 (async()=>{
