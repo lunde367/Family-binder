@@ -109,8 +109,18 @@ input:focus-visible,select:focus-visible,button:focus-visible,a:focus-visible{ou
 /* chase */
 ul.list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
 .row{display:grid;grid-template-columns:auto auto 1fr auto;gap:12px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.picker{display:flex;flex-direction:column;gap:6px;min-width:0}
+.pickstrip{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 6px;scroll-snap-type:x proximity}
+.pick{flex:0 0 84px;display:flex;flex-direction:column;gap:4px;border:0;background:none;padding:0;color:var(--fg);font:500 11px/1.25 var(--body);text-align:left;cursor:pointer;scroll-snap-align:start}
+.pick .pimg{aspect-ratio:63/88;border-radius:6px;background:var(--sunk);overflow:hidden;display:grid;place-items:center;font-size:10px;color:var(--muted);text-align:center;padding:2px;outline:3px solid transparent;outline-offset:-1px}
+.pick .pimg img{width:100%;height:100%;object-fit:cover;display:block}
+.pick[aria-selected="true"] .pimg{outline-color:var(--accent)}
+.pick[aria-selected="true"] b{color:var(--accent)}
+.pick b{font-size:11px}
+.btn.ghost{background:transparent;color:var(--fg);border:1px solid var(--line)}
 .row .thumb{width:40px;aspect-ratio:63/88;border-radius:4px;object-fit:cover;background:var(--sunk)}
 .row .meta{min-width:0}
+.row .thumb.nopic{border:1.5px dashed var(--line);color:var(--muted);font:700 16px var(--body);cursor:pointer;padding:0}
 .row .name{font-weight:700;overflow-wrap:anywhere}
 .row.got .name{text-decoration:line-through;color:var(--muted)}
 .check{width:34px;height:34px;border-radius:50%;border:2px solid var(--line);background:transparent;cursor:pointer;display:grid;place-items:center;color:transparent;font-weight:800}
@@ -313,8 +323,13 @@ ul.dexgrid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns
           <label class="full">Card name<input id="h-name" required list="card-names" placeholder="Start typing a card name"></label>
           <label>Set<select id="h-set"><option value="">Any set</option></select></label>
           <label>For<select id="h-person"></select></label>
+          <div class="full picker" id="h-picker" hidden>
+            <p class="note" id="h-pick-msg"></p>
+            <div class="pickstrip" id="h-picks" role="listbox" aria-label="Matching cards"></div>
+          </div>
           <label class="full">Note<input id="h-note" placeholder="Birthday idea, trade target…"></label>
-          <button class="btn full" type="submit">Add to chase list</button>
+          <button class="btn full" type="submit" id="h-submit">Add to chase list</button>
+          <button class="btn ghost full" type="button" id="h-cancel" hidden>Cancel</button>
         </form>
         <datalist id="card-names"></datalist>
       </details>
@@ -557,9 +572,9 @@ function renderChase(){
   if(!shown.length){ ul.innerHTML=`<li class="empty">No chase cards ${personFilter==="All"?"yet":"for "+esc(personFilter)+" yet"}. Tap <b>Add a chase card</b>.</li>`; return }
   ul.innerHTML = shown.map(c=>`<li class="row ${c.got?"got":""}">
     <button class="check" data-act="got" data-id="${esc(c.id)}" aria-label="${c.got?"Mark as still chasing":"Mark as found"}">✓</button>
-    ${c.image?`<img referrerpolicy="no-referrer" class="thumb" src="${esc(c.image)}/low.webp" alt="" loading="lazy" data-act="zoom" data-src="${esc(c.image)}/high.webp">`:`<span class="thumb"></span>`}
-    <div class="meta"><div class="name">${esc(c.name)}</div><div class="small"><b>${esc(c.person)}</b>${c.set?" · "+esc(c.set):""}${c.note?" · "+esc(c.note):""}</div></div>
-    ${pendingDelete===c.id?`<span class="acts"><button class="icon" data-act="cdel-yes" data-id="${esc(c.id)}" aria-label="Confirm remove" style="color:var(--need)">✓</button><button class="icon" data-act="del-no" aria-label="Cancel">✕</button></span>`:`<button class="icon" data-act="cdel" data-id="${esc(c.id)}" aria-label="Remove">🗑</button>`}
+    ${c.image?`<img referrerpolicy="no-referrer" class="thumb" src="${esc(c.image)}/low.webp" alt="" loading="lazy" data-act="zoom" data-src="${esc(c.image)}/high.webp">`:`<button class="thumb nopic" data-act="cedit" data-id="${esc(c.id)}" aria-label="Pick the exact card">?</button>`}
+    <div class="meta"><div class="name">${esc(c.name)}</div><div class="small"><b>${esc(c.person)}</b>${c.set?" · "+esc(c.set):""}${c.localId?" "+`<span class="num">${esc(c.localId)}</span>`:""}${c.note?" · "+esc(c.note):""}</div></div>
+    ${pendingDelete===c.id?`<span class="acts"><button class="icon" data-act="cdel-yes" data-id="${esc(c.id)}" aria-label="Confirm remove" style="color:var(--need)">✓</button><button class="icon" data-act="del-no" aria-label="Cancel">✕</button></span>`:`<span class="acts"><button class="icon" data-act="cedit" data-id="${esc(c.id)}" aria-label="Change which card">✎</button><button class="icon" data-act="cdel" data-id="${esc(c.id)}" aria-label="Remove">🗑</button></span>`}
   </li>`).join("");
 }
 function fillChaseOptions(){
@@ -864,14 +879,65 @@ $("#person-form").addEventListener("submit",e=>{
   Store.put("settings","family",{names:people}).then(()=>toast("Added "+n)).catch(()=>toast("Couldn't save. Check your connection and try again."));
   $("#person-form").reset(); $("#add-person-box").open=false;
 });
+/* Chase card picker: every card matching the typed name (in the chosen set, if any); tap the exact one */
+let chasePick = null, chaseEdit = null;
+const chaseMatches = () => {
+  const q = $("#h-name").value.trim().toLowerCase(), setId = $("#h-set").value;
+  if(q.length<2) return [];
+  const from = setId ? sets.filter(s=>s.id===setId) : sets;   // sets are newest first
+  const out = [];
+  for(const s of from) for(const c of (setCards[s.id]||[])) if(c.name.toLowerCase().includes(q)) out.push({...c, setId:s.id});
+  // exact name matches first, then newest set, then card number
+  return out.sort((a,b)=>(b.name.toLowerCase()===q)-(a.name.toLowerCase()===q));
+};
+function renderChasePicker(){
+  const all = chaseMatches(), box = $("#h-picker");
+  if(!$("#h-name").value.trim() || $("#h-name").value.trim().length<2){ box.hidden = true; chasePick = null; return }
+  box.hidden = false;
+  if(chasePick && !all.some(c=>c.id===chasePick.id)) chasePick = null;
+  if(!chasePick && all.length===1) chasePick = all[0];
+  const shown = all.slice(0,60);
+  $("#h-pick-msg").textContent = !all.length ? "No cards match that name in "+($("#h-set").value ? "this set" : "your sets")+". It will be added by name only."
+    : (all.length===1 ? "1 match:" : `${all.length} matches${all.length>60?" (showing 60, pick a set to narrow it down)":""}. Tap the exact card you want:`);
+  $("#h-picks").innerHTML = shown.map(c=>{ const st = setById[c.setId], on = chasePick && chasePick.id===c.id;
+    return `<button type="button" class="pick" role="option" data-pick="${esc(c.id)}" aria-selected="${!!on}">
+      <span class="pimg">${c.image?`<img referrerpolicy="no-referrer" src="${esc(c.image)}/low.webp" alt="" loading="lazy">`:`No picture yet`}</span>
+      <b>${esc(c.name)}</b><span class="small">${esc(st?st.name:c.setId)} · ${esc(c.localId)}</span></button>` }).join("");
+}
+$("#h-name").addEventListener("input", renderChasePicker);
+$("#h-set").addEventListener("change", renderChasePicker);
+$("#h-picks").addEventListener("click", e=>{
+  const b = e.target.closest("[data-pick]"); if(!b) return;
+  const c = chaseMatches().find(x=>x.id===b.dataset.pick); if(!c) return;
+  chasePick = chasePick && chasePick.id===c.id ? null : c;   // tap again to unpick
+  renderChasePicker();
+});
+function resetChaseForm(){
+  $("#h-name").value=""; $("#h-set").value=""; $("#h-note").value=""; chasePick=null; chaseEdit=null;
+  $("#h-submit").textContent="Add to chase list"; $("#h-cancel").hidden=true; renderChasePicker();
+}
+$("#h-cancel").onclick=()=>{ resetChaseForm(); $("#add-chase-box").open=false };
+// ✎ on a chase card: reopen the form with its details so a different card can be picked
+function editChase(id){
+  const c = chase[id]; if(!c) return;
+  chaseEdit = id; chasePick = null;
+  $("#h-name").value = c.name; $("#h-note").value = c.note||""; $("#h-person").value = c.person;
+  const st = c.cardSetId ? setById[c.cardSetId] : sets.find(s=>s.name===c.set); $("#h-set").value = st ? st.id : "";
+  renderChasePicker();
+  if(c.cardId){ const m = chaseMatches().find(x=>x.id===c.cardId); if(m){ chasePick = m; renderChasePicker() } }
+  $("#h-submit").textContent="Save changes"; $("#h-cancel").hidden=false;
+  $("#add-chase-box").open=true; $("#add-chase-box").scrollIntoView({block:"start", behavior:"smooth"});
+}
 $("#chase-form").addEventListener("submit",e=>{
   e.preventDefault();
-  const name=$("#h-name").value.trim(), setId=$("#h-set").value; if(!name) return;
-  const pool = setId ? (setCards[setId]||[]) : sets.flatMap(s=>setCards[s.id]||[]);
-  const match = pool.find(c=>c.name.toLowerCase()===name.toLowerCase());
-  const data = {name, set: setId ? setById[setId]?.name||"" : "", person:$("#h-person").value, note:$("#h-note").value.trim(), got:false, image: match&&match.image||"", added:Date.now()};
-  save("chase", newId(), data, "Added to "+data.person+"'s list");
-  $("#h-name").value=""; $("#h-set").value=""; $("#h-note").value="";
+  const typed=$("#h-name").value.trim(), setId=$("#h-set").value; if(!typed) return;
+  const p = chasePick, prev = chaseEdit ? chase[chaseEdit] : null;
+  const data = p
+    ? {name:p.name, set:setById[p.setId]?.name||"", cardId:p.id, cardSetId:p.setId, localId:p.localId, image:p.image||""}
+    : {name:typed, set: setId ? setById[setId]?.name||"" : "", image:""};
+  Object.assign(data, {person:$("#h-person").value, note:$("#h-note").value.trim(), got: prev ? !!prev.got : false, added: prev ? prev.added||Date.now() : Date.now()});
+  save("chase", chaseEdit || newId(), data, chaseEdit ? "Saved" : "Added to "+data.person+"'s list");
+  resetChaseForm();
 });
 
 document.addEventListener("click",e=>{
@@ -928,6 +994,7 @@ document.addEventListener("click",e=>{
   if(act==="minus"){ const c=owned[id]; if((c.qty||1)<=1){ pendingDelete=id; renderAll() } else save("card",id,{...c,qty:c.qty-1}); return }
   if(act==="del-no"){ pendingDelete=null; renderAll(); return }
   if(act==="del-yes"){ pendingDelete=null; remove("card",id,"Removed"); return }
+  if(act==="cedit"){ editChase(id); return }
   if(act==="cdel"){ pendingDelete=id; renderChase(); return }
   if(act==="cdel-yes"){ pendingDelete=null; remove("chase",id,"Removed"); return }
   if(act==="got"){ const c=chase[id]; save("chase",id,{...c,got:!c.got}, c.got?"Back on the list":"Found it!") }
