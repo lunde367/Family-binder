@@ -169,6 +169,8 @@ ul.dexgrid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns
 .gname{font-size:12px;font-weight:600;line-height:1.25;overflow-wrap:anywhere}
 .gname .dexno{font:500 10px var(--mono);color:var(--muted)}
 .gt-empty{flex:none;width:auto;margin:0 6px 6px 0}
+.gt .tog{width:calc(100% - 6px);padding:6px 4px;font-size:13px}
+.gt .acts{display:flex;gap:4px;margin-right:6px}.gt .acts .tog{flex:1;width:auto}
 @media (max-width:420px){.cards{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.stat b{font-size:22px}}
 </style>
 </head>
@@ -599,13 +601,17 @@ async function loadArt(){
   }
   say(""); artState = "ready"; renderArt();
 }
+// Have toggle for an art card (asks before removing); shared by list and grid views
+function artHaveBtn(c){
+  const o = owned[c.id], have = o && o.status==="have";
+  return pendingDelete===c.id
+    ? `<div class="acts"><button class="tog need" aria-pressed="true" data-act="art-unhave" data-id="${esc(c.id)}">Remove</button><button class="icon" data-act="del-no" aria-label="Cancel">✕</button></div>`
+    : `<button class="tog have" data-act="art-have" data-id="${esc(c.id)}" aria-pressed="${have}">${have?`✓ Have${(o.qty||1)>1?" ×"+o.qty:""}`:"Have"}</button>`;
+}
 function artCard(no, c, multi){
   const isFav = multi && favs[no] && favs[no].cardId===c.id, s = setById[c.setId], loved = !!hearts[c.id];
   const pic = c.image ? `<img referrerpolicy="no-referrer" src="${esc(c.image)}/low.webp" alt="${esc(c.name)}" loading="lazy">` : `<span class="noimg">No picture yet<br>${esc(c.localId)}</span>`;
-  const o = owned[c.id], have = o && o.status==="have", pend = pendingDelete===c.id;
-  const haveBtn = pend
-    ? `<div class="acts"><button class="tog need" aria-pressed="true" data-act="art-unhave" data-id="${esc(c.id)}">Remove</button><button class="icon" data-act="del-no" aria-label="Cancel">✕</button></div>`
-    : `<button class="tog have" data-act="art-have" data-id="${esc(c.id)}" aria-pressed="${have}">${have?`✓ Have${(o.qty||1)>1?" ×"+o.qty:""}`:"Have"}</button>`;
+  const have = owned[c.id] && owned[c.id].status==="have", haveBtn = artHaveBtn(c);
   return `<div class="art-card ${isFav?"fav":""} ${have?"":"missing"}">
     <button class="art" data-act="zoom" data-src="${c.image?esc(c.image)+"/high.webp":""}" aria-label="Show ${esc(c.name)} larger">${pic}${have?`<span class="badge">✓</span>`:""}</button>
     ${haveBtn}
@@ -623,6 +629,7 @@ function gridTile(m, cards, pick){
       <button class="art" data-act="zoom" data-src="${top.image?esc(top.image)+"/high.webp":""}" aria-label="Show ${esc(top.name)} larger">${pic}${have?`<span class="badge">✓</span>`:""}${pick?`<span class="pickmark" aria-label="Your pick">★</span>`:""}</button>
       ${extra>0?`<button class="more-chip" data-act="show-mon" data-no="${m.no}" aria-label="See all ${cards.length} ${esc(m.name)} cards">+${extra}</button>`:""}
     </div>
+    ${extra===0?artHaveBtn(top):""}
     <div class="gname">${label}</div></li>`;
 }
 let artReturn = null;   // set when a grid "+N" opens one Pokémon in list view
