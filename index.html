@@ -136,8 +136,14 @@ ul.list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;ga
 .prof[aria-pressed="true"]{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 35%,transparent)}
 .prof .av{position:relative;width:32px;height:32px;border-radius:50%;background:var(--sunk);display:grid;place-items:center;font:800 14px var(--body);color:var(--muted);flex:none}
 .prof .av img{border-radius:50%}
-.av-edit{position:absolute;right:-3px;bottom:-3px;width:15px;height:15px;border-radius:50%;background:var(--accent);color:#fff;font:700 9px/15px var(--body);text-align:center;box-shadow:0 0 0 2px var(--surface)}
-.prof.add{width:42px;height:42px;padding:0;justify-content:center;font:600 22px/1 var(--body);color:var(--muted);border-style:dashed}
+.prow{position:relative;display:flex;align-items:center;gap:6px}
+.prow .pbar{flex:1;min-width:0}
+.pmore{flex:none;width:40px;height:40px;border-radius:50%;border:0;background:transparent;color:var(--muted);font:800 22px/1 var(--body);cursor:pointer;display:grid;place-items:center}
+.pmore:hover,.pmore[aria-expanded="true"]{background:var(--sunk);color:var(--fg)}
+.pmenu{position:absolute;right:0;top:calc(100% + 4px);z-index:30;min-width:200px;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.25);padding:6px;display:flex;flex-direction:column}
+.pmenu[hidden]{display:none}
+.pmenu button{border:0;background:transparent;color:var(--fg);font:600 15px var(--body);text-align:left;padding:11px 12px;border-radius:8px;cursor:pointer}
+.pmenu button:hover{background:var(--sunk)}
 .prof .av img{width:100%;height:100%;object-fit:cover;border-radius:50%}
 .pedit{display:flex;flex-direction:column;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px}
 .pedit label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--muted)}
@@ -241,7 +247,14 @@ ul.dexgrid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns
     </div>
     <p class="sub">Every Sword &amp; Shield, Scarlet &amp; Violet and Mega Evolution card, ready to check off.</p>
     <div class="profiles" id="profiles" hidden>
-      <div class="pbar" id="pbar" role="group" aria-label="Whose binder"></div>
+      <div class="prow">
+        <div class="pbar" id="pbar" role="group" aria-label="Whose binder"></div>
+        <button type="button" class="pmore" id="pmore" aria-haspopup="menu" aria-expanded="false" aria-label="Profile options">⋯</button>
+        <div class="pmenu" id="pmenu" role="menu" hidden>
+          <button type="button" role="menuitem" id="pm-avatar">Change avatar</button>
+          <button type="button" role="menuitem" id="pm-add">Add a profile</button>
+        </div>
+      </div>
       <form class="pedit" id="pedit" hidden>
         <label>Avatar for <b id="pedit-who"></b><input id="pedit-mon" list="mon-names" placeholder="Type a Pokémon, e.g. Pikachu" autocomplete="off"></label>
         <div class="pedit-acts"><button class="btn" type="submit">Save</button><button class="btn ghost" type="button" id="pedit-close">Done</button></div>
@@ -1027,10 +1040,9 @@ const saveFamily = msg => Store.put("settings","family",{names:people, avatars})
 const avatarImg = no => `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${no}.png`;
 function renderProfiles(){
   $("#pbar").innerHTML = people.map(n=>{ const a = avatars[n];
-    const on = n===profile;   // tapping the profile that's already showing opens its avatar picker
-    return `<button type="button" class="prof" data-prof="${esc(n)}" aria-pressed="${on}" aria-label="${on?`${esc(n)}, showing now. Tap to change avatar`:`Switch to ${esc(n)}`}">
-      <span class="av">${a?`<img referrerpolicy="no-referrer" src="${esc(avatarImg(a))}" alt="">`:esc(n.slice(0,1).toUpperCase())}${on?`<span class="av-edit" aria-hidden="true">✎</span>`:""}</span>${esc(n)}</button>` }).join("")
-    + `<button type="button" class="prof add" id="prof-add" aria-label="Add a profile">+</button>`;
+    return `<button type="button" class="prof" data-prof="${esc(n)}" aria-pressed="${n===profile}">
+      <span class="av">${a?`<img referrerpolicy="no-referrer" src="${esc(avatarImg(a))}" alt="">`:esc(n.slice(0,1).toUpperCase())}</span>${esc(n)}</button>` }).join("");
+  $("#pm-avatar").textContent = `Change ${profile}'s avatar`;
   const on = $("#pbar [aria-pressed=true]"); if(on) on.scrollIntoView({block:"nearest", inline:"nearest"});
 }
 function switchProfile(who){
@@ -1041,18 +1053,20 @@ function switchProfile(who){
   renderProfiles(); renderAll();
   toast(`Showing ${profile}'s binder`);
 }
-$("#pbar").addEventListener("click", e=>{
-  const b = e.target.closest("button"); if(!b) return;
-  if(b.dataset.prof && b.dataset.prof!==profile){ switchProfile(b.dataset.prof); return }
-  if(b.id==="prof-add"){ $("#pedit").hidden=true; $("#padd").hidden=false; $("#padd-name").focus(); return }
-  if(b.dataset.prof){
-    if(!$("#pedit").hidden){ $("#pedit").hidden=true; return }   // tap again to close
-    $("#padd").hidden=true; $("#pedit").hidden=false; $("#pedit-who").textContent = profile; $("#pedit-msg").textContent="";
-    const a = avatars[profile], m = a && dex.find(x=>x.no===a); $("#pedit-mon").value = m ? m.name : "";
-    loadDex().then(()=>{ $("#mon-names").innerHTML = dex.map(m=>`<option value="${esc(m.name)}">`).join("") });
-    $("#pedit-mon").focus();
-  }
-});
+$("#pbar").addEventListener("click", e=>{ const b = e.target.closest("[data-prof]"); if(b) switchProfile(b.dataset.prof) });
+// ⋯ menu: change the current profile's avatar, or add a profile
+const menuOpen = open => { $("#pmenu").hidden = !open; $("#pmore").setAttribute("aria-expanded", open) };
+$("#pmore").onclick = e => { e.stopPropagation(); menuOpen($("#pmenu").hidden) };
+document.addEventListener("click", e=>{ if(!$("#pmenu").hidden && !e.target.closest("#pmenu")) menuOpen(false) });
+document.addEventListener("keydown", e=>{ if(e.key==="Escape") menuOpen(false) });
+$("#pm-add").onclick = () => { menuOpen(false); $("#pedit").hidden=true; $("#padd").hidden=false; $("#padd-name").focus() };
+$("#pm-avatar").onclick = () => {
+  menuOpen(false);
+  $("#padd").hidden=true; $("#pedit").hidden=false; $("#pedit-who").textContent = profile; $("#pedit-msg").textContent="";
+  const a = avatars[profile], m = a && dex.find(x=>x.no===a); $("#pedit-mon").value = m ? m.name : "";
+  loadDex().then(()=>{ $("#mon-names").innerHTML = dex.map(m=>`<option value="${esc(m.name)}">`).join("") });
+  $("#pedit-mon").focus();
+};
 $("#pedit").addEventListener("submit", async e=>{
   e.preventDefault(); await loadDex();
   const q = $("#pedit-mon").value.trim().toLowerCase();
