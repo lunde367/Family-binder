@@ -185,7 +185,7 @@ ul.dexgrid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns
       <h1>Family Card Binder</h1>
       <div class="who" id="who"></div>
     </div>
-    <p class="sub">Every Scarlet &amp; Violet and Mega Evolution card, ready to check off.</p>
+    <p class="sub">Every Sword &amp; Shield, Scarlet &amp; Violet and Mega Evolution card, ready to check off.</p>
     <div class="showcase" id="showcase" hidden>
       <div class="fan" id="fan"></div>
       <p class="fan-cap" id="fan-cap"></p>
@@ -311,7 +311,7 @@ ul.dexgrid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns
 
 <script>
 const API = "https://api.tcgdex.net/v2/en";
-const SERIES = ["me","sv"];            // Mega Evolution and Scarlet & Violet
+const SERIES = ["me","sv","swsh"];     // Mega Evolution, Scarlet & Violet and Sword & Shield
 const CFG = window.BINDER_CONFIG || {};
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -473,7 +473,9 @@ function renderSetIndex(){
   const row = s=>{ const h=haveIn(s.id), pct=s.total?Math.round(h/s.total*100):0;
     return `<button class="setrow" data-open="${esc(s.id)}">${s.logo?`<img referrerpolicy="no-referrer" class="logo" src="${esc(s.logo)}" alt="" loading="lazy">`:`<span></span>`}<span><b>${esc(s.name)}</b><span class="date">${s.release?fmtDate(s.release):"Promos &amp; extras"}</span></span><span class="count">${h} / ${s.total}</span><div class="bar"><i style="width:${pct}%"></i></div></button>` };
   const dated=sets.filter(s=>s.release), extra=sets.filter(s=>!s.release);
-  box.innerHTML = `<h3>Newest first</h3>${dated.map(row).join("")}${extra.length?`<h3>Promos &amp; extras</h3>${extra.map(row).join("")}`:""}`;
+  let era = "", list = "";   // newest first, with a heading for each era
+  for(const s of dated){ if(s.era!==era){ era=s.era; list+=`<h3>${esc(era)}</h3>` } list+=row(s) }
+  box.innerHTML = `${list}${extra.length?`<h3>Promos &amp; extras</h3>${extra.map(row).join("")}`:""}`;
 }
 function renderSetDetail(){
   const s=setById[openSet]; if(!s) return;

@@ -1,6 +1,6 @@
 # Family Card Binder
 
-A one-page website for tracking your family's Pokémon cards. It shows every Scarlet & Violet and Mega Evolution card with its picture (loaded live from [TCGdex](https://tcgdex.dev)), tracks what you have and need, and keeps a chase list for each family member.
+A one-page website for tracking your family's Pokémon cards. It shows every Sword & Shield, Scarlet & Violet and Mega Evolution card with its picture (loaded live from [TCGdex](https://tcgdex.dev)), tracks what you have and need, and keeps a chase list for each family member.
 
 Everything here can be done from a phone browser.
 
@@ -64,5 +64,5 @@ The anon key is meant to be public. The "family only" rule above is what keeps o
 
 ## Notes
 - Card lists and pictures come from TCGdex and are cached on each device for a week. New sets appear once TCGdex adds them.
-- To track an older era too, edit the line `const SERIES = ["me","sv"];` in `index.html`, e.g. `["me","sv","swsh"]` for Sword & Shield.
+- To track an older era too, edit the line `const SERIES = ["me","sv","swsh"];` in `index.html`, e.g. add `"sm"` for Sun & Moon.
 - Anything saved before you set up sync stays on that one device; it does not move into the shared binder.
