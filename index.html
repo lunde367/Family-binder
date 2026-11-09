@@ -78,7 +78,7 @@ input:focus-visible,select:focus-visible,button:focus-visible,a:focus-visible{ou
 .art{position:relative;aspect-ratio:63/88;border-radius:7px;overflow:hidden;background:var(--sunk);border:0;padding:0;cursor:zoom-in;width:100%;max-width:100%}
 .art img{width:100%;height:100%;object-fit:cover;display:block}
 .art .noimg{position:absolute;inset:0;display:grid;place-items:center;font:500 12px var(--mono);color:var(--muted);text-align:center;padding:8px}
-.tile.missing .art img{filter:grayscale(1);opacity:.45}
+.tile.missing .art img,.art-card.missing .art img{filter:grayscale(.55) brightness(.92);opacity:.85}
 .tile.need .art{outline:2px solid var(--need);outline-offset:-2px}
 .badge{position:absolute;top:6px;right:6px;font:800 12px var(--body);padding:3px 7px;border-radius:999px;background:var(--have);color:#fff;font-variant-numeric:tabular-nums}
 .tile .name{font-weight:700;font-size:14px;line-height:1.25;overflow-wrap:anywhere}
@@ -125,7 +125,6 @@ ul.dex{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap
 .strip{display:flex;gap:10px;overflow-x:auto;padding-bottom:4px;scroll-snap-type:x proximity}
 .art-card{flex:0 0 118px;display:flex;flex-direction:column;gap:5px;scroll-snap-align:start;min-width:0}
 .art-card.fav .art{outline:3px solid #E0A82E;outline-offset:-3px}
-.art-card.missing .art img{filter:grayscale(1);opacity:.5}
 .art-card .tog{flex:none;width:100%}
 .art-card .meta{display:flex;justify-content:space-between;align-items:flex-start;gap:4px}
 .art-card .small{font-size:11px;line-height:1.3}
