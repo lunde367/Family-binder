@@ -644,8 +644,11 @@ $("#search").addEventListener("input",e=>{ mineQuery=e.target.value; renderMine(
 document.querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{ mineFilter=b.dataset.f; document.querySelectorAll("[data-f]").forEach(x=>x.setAttribute("aria-pressed",x===b)); renderMine() });
 
 /* chase */
+// A picked chase card with no saved picture takes it from the card catalog once the database has one (new sets get pictures a little after release)
+const catalogImage = c => { if(c.image || !c.cardId) return c.image||""; const setId = c.cardSetId || c.cardId.slice(0,c.cardId.lastIndexOf("-"));
+  const m = (setCards[setId]||[]).find(x=>x.id===c.cardId); return m && m.image || "" };
 function renderChase(){
-  const names=["All",...people], list=Object.entries(chase).map(([id,c])=>({id,...c}));
+  const names=["All",...people], list=Object.entries(chase).map(([id,c])=>({id,...c, image:catalogImage(c)}));
   $("#people").innerHTML = names.map(n=>{ const k=list.filter(c=>!c.got&&(n==="All"||c.person===n)).length;
     return `<button class="chip" data-person="${esc(n)}" aria-pressed="${n===personFilter}">${esc(n)} · ${k}</button>` }).join("");
   const sel=$("#h-person"), prev=sel.value;
