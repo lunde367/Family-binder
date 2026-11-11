@@ -715,7 +715,7 @@ async function loadValuePrices(ids){
 }
 function renderValue(){
   $("#value-title").textContent = people.length>1 ? `${profile}'s collection value` : "Collection value";
-  const mine = Object.entries(owned).filter(([,o])=>o.status==="have").map(([id,o])=>({id, ...o, qty:o.qty||1}));
+  const mine = Object.entries(owned).filter(([,o])=>o.status==="have").map(([id,o])=>({id, ...o, qty:o.qty||1, image:catalogImage({image:o.image, cardId:id, cardSetId:o.setId})}));
   const ul = $("#value-list");
   if(!mine.length){ $("#value-total").hidden = true; ul.innerHTML = `<li class="empty">Mark cards as <b>Have</b> and they'll show up here with what they're worth.</li>`; $("#value-more").hidden = true; return }
   const missing = mine.map(c=>c.id).filter(id=>!(id in prices));
