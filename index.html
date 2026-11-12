@@ -523,12 +523,12 @@ async function loadCatalog(){
   status("Loading card lists…");
   try{
     const series = await Promise.all(SERIES.map(s=>getJSON("/series/"+s)));
-    const briefs = series.flatMap(s=>(s.sets||[]).map(x=>({...x, era:s.name})));
+    const briefs = series.flatMap((s,i)=>(s.sets||[]).map(x=>({...x, era:s.name, series:SERIES[i]})));
     const details = await Promise.all(briefs.map(b=>getJSON("/sets/"+encodeURIComponent(b.id), setAge, undefined, v=>({releaseDate:v.releaseDate, cards:v.cards})).catch(()=>null)));
     sets = briefs.map((b,i)=>{
       const d = details[i] || {};
       setCards[b.id] = (d.cards||[]).slice().sort((a,c)=>natural(a.localId,c.localId));
-      return { id:b.id, name:b.name, era:b.era, logo:b.logo?b.logo+".webp":"", release:d.releaseDate||"",
+      return { id:b.id, name:b.name, era:b.era, series:b.series, logo:b.logo?b.logo+".webp":"", release:d.releaseDate||"",
                total:(b.cardCount&&b.cardCount.total)||setCards[b.id].length, official:(b.cardCount&&b.cardCount.official)||0 };
     }).sort((a,b)=> (b.release||"0").localeCompare(a.release||"0"));
     setById = Object.fromEntries(sets.map(s=>[s.id,s]));
@@ -823,11 +823,13 @@ const NAME_FIX = {"mr-mime":"Mr. Mime","mime-jr":"Mime Jr.","mr-rime":"Mr. Rime"
   "flabebe":"Flabébé","chi-yu":"Chi-Yu","ting-lu":"Ting-Lu","chien-pao":"Chien-Pao","wo-chien":"Wo-Chien"};
 const monName = s => NAME_FIX[s] || s.split("-").map(w=>w[0].toUpperCase()+w.slice(1)).join(" ");
 const rareKind = r => /special illustration/i.test(r||"") ? "SIR" : /illustration/i.test(r||"") ? "IR" : "";
+// Sword & Shield had no IR/SIR labels; its alt arts are Ultra or Secret Rares, so those all join the art tab for that era
+const SWSH_ART = /ultra|secret|rainbow/i;
 let dex = [], artFilter = "all", artQuery = "", artShown = 80;
 // Three card lists share this view: "art" (IR + SIR), "mega" (every Mega card) and "regional" (Alolan, Galarian, Hisuian, Paldean forms)
 const ART_MODES = {
   art:  { byDex:{}, state:"idle", title:"Illustration Rares", empty:"No IR or SIR yet", emptyPromo:"No IR, SIR or promo yet",
-          note:"Every Illustration Rare (IR) and Special Illustration Rare (SIR), by Pokédex number. When a Pokémon has several, tap ☆ to pick the best one. Tap ♡ on any card to add it to your favorites.",
+          note:"Every Illustration Rare (IR) and Special Illustration Rare (SIR), plus Sword & Shield's Ultra and Secret Rares (where its alternate arts are), by Pokédex number. When a Pokémon has several, tap ☆ to pick the best one. Tap ♡ on any card to add it to your favorites.",
           loading:"Loading every illustration rare and promo… the first time takes a minute or two; after that it's instant." },
   mega: { byDex:{}, state:"idle", prefixes:["Mega"], title:"Mega Pokémon", empty:"No Mega cards yet", emptyPromo:"No Mega cards yet",
           note:"Every Mega Pokémon card, by Pokédex number. When a Pokémon has several, tap ☆ to pick the best one. Tap ♡ on any card to add it to your favorites.",
@@ -850,7 +852,7 @@ function setArtMode(mode){
 // Short rarity tag for Mega and regional cards
 const megaTag = r => { r = r||"";
   if(/special illustration/i.test(r)) return "SIR"; if(/illustration/i.test(r)) return "IR";
-  if(/hyper/i.test(r)) return "MHR"; if(/ultra/i.test(r)) return "UR"; if(/double/i.test(r)) return "RR";
+  if(/hyper/i.test(r)) return "MHR"; if(/rainbow/i.test(r)) return "Rainbow"; if(/secret/i.test(r)) return "Secret"; if(/ultra/i.test(r)) return "UR"; if(/double/i.test(r)) return "RR";
   return r ? r.split(/\s+/).map(w=>w[0]).join("").toUpperCase().slice(0,4) : "Mega" };
 
 async function pool(items, n, fn, onStep){
@@ -879,6 +881,13 @@ async function loadArt(mode){
   try{
     list = await getJSON("/cards?rarity=illustration", DAY, undefined, brief);
     if(!list.length) list = await getJSON("/cards?rarity=Illustration", DAY, undefined, brief);
+    // Sword & Shield Ultra / Secret / Rainbow Rares (alternate arts live here); a failed lookup just leaves them out
+    const swsh = new Set(sets.filter(s=>s.series==="swsh").map(s=>s.id));
+    if(swsh.size){
+      const extra = (await Promise.all(["ultra","secret","rainbow"].map(r=>getJSON("/cards?rarity="+r, DAY, undefined, brief).catch(()=>[])))).flat();
+      const have = new Set(list.map(c=>c.id));
+      for(const c of extra) if(!have.has(c.id) && swsh.has(c.id.slice(0,c.id.lastIndexOf("-")))){ have.add(c.id); list.push(c) }
+    }
   }catch(e){ say("Couldn't reach the card database. Check your connection and reopen this tab."); A.state="idle"; return }
   const mine = new Set(sets.map(s=>s.id));
   list = list.filter(c=>mine.has(c.id.slice(0,c.id.lastIndexOf("-"))));
@@ -893,7 +902,7 @@ async function loadArt(mode){
     const setId = c.id.slice(0,c.id.lastIndexOf("-"));
     const full = await getJSON("/cards/"+encodeURIComponent(c.id), v => v&&v.image ? 30*DAY : DAY, undefined,
       v=>({name:v.name, localId:v.localId, image:v.image, rarity:v.rarity, dexId:v.dexId}));
-    const kind = rareKind(full.rarity) || (promoSets.has(setId) ? "Promo" : "");
+    const kind = rareKind(full.rarity) || (setById[setId]?.series==="swsh" && SWSH_ART.test(full.rarity||"") ? megaTag(full.rarity) : "") || (promoSets.has(setId) ? "Promo" : "");
     if(!kind || !Array.isArray(full.dexId) || !full.dexId.length) return;   // skip trainers and non-IR matches
     const entry = { id:c.id, name:full.name, image:full.image||"", kind, promo:kind==="Promo", setId, localId:full.localId };
     for(const no of full.dexId) (artByDex[no] ||= []).push(entry);
