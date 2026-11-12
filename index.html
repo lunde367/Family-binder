@@ -1055,7 +1055,9 @@ function renderProfiles(){
     return `<button type="button" class="prof" data-prof="${esc(n)}" aria-pressed="${n===profile}">
       <span class="av">${a?`<img referrerpolicy="no-referrer" src="${esc(avatarImg(a))}" alt="">`:esc(n.slice(0,1).toUpperCase())}</span>${esc(n)}</button>` }).join("");
   $("#pm-avatar").textContent = `Change ${profile}'s avatar`;
-  const on = $("#pbar [aria-pressed=true]"); if(on) on.scrollIntoView({block:"nearest", inline:"nearest"});
+  // keep the chosen profile in view by sliding the row sideways only (scrollIntoView would also scroll the page up to it)
+  const on = $("#pbar [aria-pressed=true]"), bar = $("#pbar");
+  if(on && (on.offsetLeft < bar.scrollLeft || on.offsetLeft + on.offsetWidth > bar.scrollLeft + bar.clientWidth)) bar.scrollLeft = on.offsetLeft - 8;
 }
 function switchProfile(who){
   if(who===profile) return;
