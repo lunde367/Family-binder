@@ -946,6 +946,17 @@ function dexRows(){
   return Object.keys(by).map(Number).sort((a,b)=>a-b).map(no=>({no, name:by[no][0].name.replace(/^(Mega|Alolan|Galarian|Hisuian|Paldean)\s+/,"").replace(/ ex$/,"")}));
 }
 // Have toggle for an art card (asks before removing); shared by list and grid views
+/* Only the "Me" profile on the owner's sign-in can take cards out on the Art rares, Mega and Regional tabs.
+   The owner's email is stored as a SHA-256 fingerprint so it isn't readable in this public file. */
+const OWNER_HASH = "9718e6fe3d812350f92e5137085094400dc322e075ec9bb13ef126cd4f2be938";
+let isOwner = !Store.cloud;   // without cloud sync there's only one person, so no lock
+async function setSignedIn(email){
+  try{ const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode((email||"").trim().toLowerCase()));
+    isOwner = [...new Uint8Array(d)].map(b=>b.toString(16).padStart(2,"0")).join("") === OWNER_HASH }
+  catch(e){ isOwner = false }
+  if(!$("#view-art").hidden) renderArt();
+}
+const canRemoveArt = () => isOwner && profile===people[0];
 function artHaveBtn(c){
   const o = owned[c.id], have = o && o.status==="have";
   return pendingDelete===c.id
@@ -967,7 +978,7 @@ function artCard(no, c, multi){
 function gridCheck(c, monName){
   const have = owned[c.id] && owned[c.id].status==="have", pend = pendingDelete===c.id;
   if(pend) return `<button class="gcheck pend" data-act="art-unhave" data-id="${esc(c.id)}" aria-label="Tap again to remove ${esc(c.name)} from your cards">✕</button>`;
-  return `<button class="gcheck" data-act="art-have" data-id="${esc(c.id)}" aria-pressed="${!!have}" aria-label="${have?`You have ${esc(c.name)}. Tap to remove`:`Mark ${esc(c.name)} as have`}">✓</button>`;
+  return `<button class="gcheck" data-act="art-have" data-id="${esc(c.id)}" aria-pressed="${!!have}" aria-label="${have?`You have ${esc(c.name)}${canRemoveArt()?". Tap to remove":""}`:`Mark ${esc(c.name)} as have`}">✓</button>`;
 }
 function gridTile(m, cards, pick){
   const top = cards[0], extra = cards.length-1, label = `<span class="dexno">#${String(m.no).padStart(4,"0")}</span> ${esc(m.name)}`;
@@ -1175,6 +1186,7 @@ document.addEventListener("click",e=>{
   }
   if(act==="art-have"){
     const cur = owned[id];
+    if(cur && cur.status==="have" && !canRemoveArt()){ toast(`Only ${people[0]} on the main account can remove art cards`); return }
     if(cur && cur.status==="have"){   // ask before removing; the ask clears itself after 4 seconds
       pendingDelete=id; renderArt();
       setTimeout(()=>{ if(pendingDelete===id){ pendingDelete=null; renderArt() } }, 4000);
@@ -1191,7 +1203,7 @@ document.addEventListener("click",e=>{
     return;
   }
   if(act==="back-grid"){ if(navBack("mon")) backToGrid(); return }
-  if(act==="art-unhave"){ pendingDelete=null; remove("card", id, "Removed from your cards"); return }
+  if(act==="art-unhave"){ pendingDelete=null; if(!canRemoveArt()){ renderArt(); return } remove("card", id, "Removed from your cards"); return }
   if(act==="heart"){
     const hs = hearts, had = hs[id], dbKind = K("heart");
     if(had) delete hs[id]; else hs[id]={added:Date.now()};
@@ -1264,7 +1276,7 @@ async function startApp(){
     startApp(); return;
   }
   const sb=Store.sb;
-  const showUser = u => { $("#who").innerHTML = `${esc(u.email)} · <button id="signout">Sign out</button>`;
+  const showUser = u => { setSignedIn(u.email); $("#who").innerHTML = `${esc(u.email)} · <button id="signout">Sign out</button>`;
     $("#signout").onclick=async()=>{ await sb.auth.signOut(); location.reload() } };
   const { data:{ session } } = await sb.auth.getSession();
   if(session){ showUser(session.user); startApp() }
