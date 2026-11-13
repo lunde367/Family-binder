@@ -515,7 +515,7 @@ const setAge = v => isNew(v && v.releaseDate) ? DAY : WEEK;
 async function loadCatalog(){
   status("Loading card lists…");
   try{
-    const series = await Promise.all(SERIES.map(s=>getJSON("/series/"+s)));
+    const series = await Promise.all(SERIES.map(s=>getJSON("/series/"+s, DAY)));   // daily, so new sets and their logos show up quickly
     const briefs = series.flatMap((s,i)=>(s.sets||[]).map(x=>({...x, era:s.name, series:SERIES[i]})));
     const details = await Promise.all(briefs.map(b=>getJSON("/sets/"+encodeURIComponent(b.id), setAge, undefined, v=>({releaseDate:v.releaseDate, cards:v.cards})).catch(()=>null)));
     sets = briefs.map((b,i)=>{
