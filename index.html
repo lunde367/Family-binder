@@ -376,13 +376,6 @@ ul.dexgrid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns
 
     <section id="view-chase" class="stack" hidden>
       <div class="people" id="people"></div>
-      <details class="add" id="add-person-box">
-        <summary>Add a family member</summary>
-        <form class="grid" id="person-form">
-          <label class="full">Name<input id="p-name" required placeholder="e.g. Ava"></label>
-          <button class="btn full" type="submit">Add</button>
-        </form>
-      </details>
       <details class="add" id="add-chase-box">
         <summary>Add a chase card</summary>
         <form class="grid" id="chase-form">
@@ -647,13 +640,16 @@ document.querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{ mineFilter=b.da
 // A picked chase card with no saved picture takes it from the card catalog once the database has one (new sets get pictures a little after release)
 const catalogImage = c => { if(c.image || !c.cardId) return c.image||""; const setId = c.cardSetId || c.cardId.slice(0,c.cardId.lastIndexOf("-"));
   const m = (setCards[setId]||[]).find(x=>x.id===c.cardId); return m && m.image || "" };
+let chaseForPicked = false;
 function renderChase(){
   const names=["All",...people], list=Object.entries(chase).map(([id,c])=>({id,...c, image:catalogImage(c)}));
   $("#people").innerHTML = names.map(n=>{ const k=list.filter(c=>!c.got&&(n==="All"||c.person===n)).length;
     return `<button class="chip" data-person="${esc(n)}" aria-pressed="${n===personFilter}">${esc(n)} · ${k}</button>` }).join("");
   const sel=$("#h-person"), prev=sel.value;
   sel.innerHTML=people.map(n=>`<option>${esc(n)}</option>`).join("");
-  if(people.includes(prev)) sel.value=prev; else if(personFilter!=="All") sel.value=personFilter;
+  // "For" follows whoever's list (or profile) is showing, unless it was picked by hand while filling in the form
+  if(chaseForPicked && people.includes(prev)) sel.value=prev;
+  else sel.value = personFilter!=="All" ? personFilter : (people.includes(profile) ? profile : people[0]);
   const shown=list.filter(c=>personFilter==="All"||c.person===personFilter)
     .sort((a,b)=>(a.got?1:0)-(b.got?1:0) || (a.person||"").localeCompare(b.person||"") || a.name.localeCompare(b.name));
   const ul=$("#chase-list");
@@ -1102,16 +1098,9 @@ $("#padd").addEventListener("submit", e=>{
 
 /* ---------------- Actions ---------------- */
 const newId = () => Date.now().toString(36)+Math.random().toString(36).slice(2,7);
-$("#person-form").addEventListener("submit",e=>{
-  e.preventDefault(); const n=$("#p-name").value.trim(); if(!n) return;
-  if(people.includes(n)){ toast(n+" is already on the list"); return }
-  if(n.includes("@")){ toast("Names can't include @"); return }
-  people=[...people,n]; personFilter=n; renderChase(); renderProfiles();
-  saveFamily("Added "+n);
-  $("#person-form").reset(); $("#add-person-box").open=false;
-});
 /* Chase card picker: every card matching the typed name (in the chosen set, if any); tap the exact one */
 let chasePick = null, chaseEdit = null;
+$("#h-person").addEventListener("change", ()=>{ chaseForPicked = true });
 const chaseMatches = () => {
   const q = $("#h-name").value.trim().toLowerCase(), setId = $("#h-set").value;
   if(q.length<2) return [];
@@ -1144,7 +1133,7 @@ $("#h-picks").addEventListener("click", e=>{
   renderChasePicker();
 });
 function resetChaseForm(){
-  $("#h-name").value=""; $("#h-set").value=""; $("#h-note").value=""; chasePick=null; chaseEdit=null;
+  $("#h-name").value=""; $("#h-set").value=""; $("#h-note").value=""; chasePick=null; chaseEdit=null; chaseForPicked=false;
   $("#h-submit").textContent="Add to chase list"; $("#h-cancel").hidden=true; renderChasePicker();
 }
 $("#h-cancel").onclick=()=>{ resetChaseForm(); $("#add-chase-box").open=false };
@@ -1152,7 +1141,7 @@ $("#h-cancel").onclick=()=>{ resetChaseForm(); $("#add-chase-box").open=false };
 function editChase(id){
   const c = chase[id]; if(!c) return;
   chaseEdit = id; chasePick = null;
-  $("#h-name").value = c.name; $("#h-note").value = c.note||""; $("#h-person").value = c.person;
+  $("#h-name").value = c.name; $("#h-note").value = c.note||""; $("#h-person").value = c.person; chaseForPicked = true;
   const st = c.cardSetId ? setById[c.cardSetId] : sets.find(s=>s.name===c.set); $("#h-set").value = st ? st.id : "";
   renderChasePicker();
   if(c.cardId){ const m = chaseMatches().find(x=>x.id===c.cardId); if(m){ chasePick = m; renderChasePicker() } }
